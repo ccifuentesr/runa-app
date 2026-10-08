@@ -1,0 +1,17 @@
+Stars: 1510; training: 1208; test: 302
+
+Both models use the same held-out stars. Lower MAE is better.
+
+Quadratic reference (G-J)
+  MAE: 0.258 subtypes
+  Within 1 subtype: 99.7%
+  M0-M2: n=113, MAE=0.292
+  M2.5-M4: n=149, MAE=0.244
+  M4.5-M5.5: n=40, MAE=0.212
+
+Random forest (G-J, J-W2)
+  MAE: 0.249 subtypes
+  Within 1 subtype: 99.3%
+  M0-M2: n=113, MAE=0.266
+  M2.5-M4: n=149, MAE=0.250
+  M4.5-M5.5: n=40, MAE=0.198
