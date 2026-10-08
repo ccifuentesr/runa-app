@@ -1,6 +1,6 @@
 # RUNA
 
-RUNA is a planned app for exploring stellar properties such as spectral type, mass, radius, and multiplicity. The current command-line prototype estimates the spectral subtype of an M dwarf from two photometric measurements. It does not yet estimate the other properties or provide a graphical interface.
+RUNA is an app for exploring stellar properties such as spectral type, mass, radius, and multiplicity. The current command-line feature estimates the spectral subtype of an M dwarf from two photometric measurements. It does not yet estimate the other properties or provide a graphical interface.
 
 ## Estimate one star
 
