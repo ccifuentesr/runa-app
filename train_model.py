@@ -55,6 +55,13 @@ def load_stars():
     return stars
 
 
+def make_reference_model():
+    """A smooth mapping from G-J color to spectral subtype."""
+    return make_pipeline(
+        PolynomialFeatures(degree=2, include_bias=False), LinearRegression()
+    )
+
+
 def model_summary(name, actual, predicted):
     """Return errors in spectral subtypes, including the sparse late range."""
     lines = [
@@ -105,9 +112,7 @@ def main():
     )
 
     # A smooth, one-color reference model. It is trained only on the training stars.
-    baseline = make_pipeline(
-        PolynomialFeatures(degree=2, include_bias=False), LinearRegression()
-    )
+    baseline = make_reference_model()
     baseline.fit(train[["G-J"]], train["SpTnum"])
     baseline_pred = baseline.predict(test[["G-J"]])
 

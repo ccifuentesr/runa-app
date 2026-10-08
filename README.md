@@ -11,7 +11,17 @@ python3 -m pip install -r requirements.txt
 python3 train_model.py
 ```
 
-The script reads `cifuentes20_dataset.csv` without changing it. It writes metrics, test-set predictions, and two plots to `results/`.
+The training script reads `cifuentes20_dataset.csv` without changing it. It writes metrics, test-set predictions, and two plots to `results/`.
+
+## Estimate one star
+
+Run the terminal prompt:
+
+```bash
+python3 predict_star.py
+```
+
+Enter a Gaia `G` magnitude and a 2MASS `J` magnitude. The script calculates `G-J` and returns an estimated M subtype, rounded to the nearest 0.5. It uses the simple one-color model, trained on all selected catalogue stars after the train/test evaluation. The random forest requires a third magnitude, `W2`, so it is not used here. Colors outside the training range are rejected.
 
 ## How it works
 
