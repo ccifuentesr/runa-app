@@ -768,6 +768,7 @@ available_tools = [
 current_tool = st.session_state.get("runa_tool", "Identification")
 if current_tool not in [*available_tools, "Data"]:
     current_tool = "Identification"
+if "runa_tool" not in st.session_state:
     st.session_state["runa_tool"] = current_tool
 if "runa_main_nav" not in st.session_state:
     st.session_state["runa_main_nav"] = (
