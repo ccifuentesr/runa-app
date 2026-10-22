@@ -46,6 +46,7 @@ from predict_star import estimate_subtype
 from train_model import load_stars
 from vosa_input import build_vosa_input
 from cifuentes20 import load_table6
+from local_volume import local_volume_status
 from published_luminosities import published_luminosities
 
 
@@ -563,6 +564,14 @@ st.markdown(
     .runa-tools {border-bottom: 1px solid #27272a; margin: 1.1rem 0 2rem; padding-bottom: .75rem;}
     .runa-tools span {font-size: 1.02rem; color: #92929d;}
     .runa-note {color: #a1a1aa; font-size: .9rem;}
+    .runa-volume {border: 1px solid #303037; border-radius: 12px; background: #19191e;
+                  padding: .8rem 1rem; margin: .65rem 0 .9rem;}
+    .runa-volume-title {color: #f4f4f5; font-size: 1rem; font-weight: 650;
+                        margin-bottom: .25rem;}
+    .runa-volume-text {color: #a1a1aa; font-size: .86rem; line-height: 1.45;}
+    .runa-volume-text a {color: #6ee7b7; text-decoration: none;}
+    .runa-volume-multiple {border-color: #6a3638; background: #2a191a;}
+    .runa-volume-multiple .runa-volume-title {color: #f0aaa2;}
     .runa-gaia-id {color: #c7c7cf; font-size: 1.1rem; font-weight: 560;
                    margin: .3rem 0 .9rem;}
     .runa-gaia-id strong {color: #f4f4f5; font-weight: 680;}
@@ -928,6 +937,53 @@ elif tool == "Identification":
                     st.pyplot(polar_fig, use_container_width=True)
                     plt.close(polar_fig)
                     st.caption("RA gives the polar angle; the radius is the distance from the Sun in pc.")
+                    volume = local_volume_status(star)
+                    distance_text = f'{volume["distance_pc"]:.3f} pc'
+                    if volume["inside_10pc"]:
+                        sample = volume["sample_match"]
+                        sample_text = "Matched in Table C1." if sample else (
+                            "No exact Table C1 match was found."
+                        )
+                        st.markdown(
+                            '<div class="runa-volume">'
+                            '<div class="runa-volume-title">Within 10 pc</div>'
+                            f'<div class="runa-volume-text">Distance: {distance_text}. '
+                            f'{sample_text} See the '
+                            '<a href="https://ui.adsabs.harvard.edu/abs/2021A%26A...650A.201R/abstract" '
+                            'target="_blank">Reylé et al. (2021) 10 pc sample</a>.</div></div>',
+                            unsafe_allow_html=True,
+                        )
+                        multiple = volume["multiple_match"]
+                        if multiple:
+                            multiple_name = escape(
+                                multiple.get("Name") or multiple.get("SimbadName") or "this object"
+                            )
+                            component = escape(str(multiple.get("Comp") or "").strip())
+                            component_text = f" · component {component}" if component else ""
+                            st.markdown(
+                                '<div class="runa-volume runa-volume-multiple">'
+                                '<div class="runa-volume-title">Known multiple system</div>'
+                                f'<div class="runa-volume-text">{multiple_name}{component_text} is listed '
+                                'among the individual components of multiple systems within 10 pc in '
+                                '<a href="https://ui.adsabs.harvard.edu/abs/2026MNRAS.549ag838G/abstract" '
+                                'target="_blank">González-Payo et al. (2026)</a> '
+                                '(<a href="https://vizier.cds.unistra.fr/viz-bin/VizieR?-source=J/MNRAS/549/G838" '
+                                'target="_blank">J/MNRAS/549/G838</a>).</div></div>',
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            st.caption(
+                                "No match was found in Table C2 of known multiple-system components. "
+                                "This does not by itself establish that the star is single."
+                            )
+                    else:
+                        st.markdown(
+                            '<div class="runa-volume">'
+                            '<div class="runa-volume-title">Outside the 10 pc volume</div>'
+                            f'<div class="runa-volume-text">Distance: {distance_text} from the current '
+                            'parallax.</div></div>',
+                            unsafe_allow_html=True,
+                        )
                 else:
                     st.info("A positive parallax and coordinates are needed for the polar view.")
 
