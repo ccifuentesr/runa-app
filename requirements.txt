@@ -2,3 +2,6 @@ numpy
 pandas
 scikit-learn
 matplotlib
+streamlit
+astroquery
+banyan_sigma @ git+https://github.com/jgagneastro/banyan_sigma.git@84391a8c4

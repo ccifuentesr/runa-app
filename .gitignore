@@ -4,3 +4,6 @@ __pycache__/
 .venv/
 .env
 .ipynb_checkpoints/
+.venv-broken-python3123/
+.pytest_cache/
+.mypy_cache/
