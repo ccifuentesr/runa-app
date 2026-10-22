@@ -1,4 +1,4 @@
-"""Identify one star with SIMBAD and fetch an SDSS image."""
+"""Identify one star and fetch a survey image."""
 
 import io
 from urllib.parse import urlencode
@@ -9,6 +9,7 @@ import numpy as np
 import astropy.units as u
 from astroquery.gaia import Gaia
 from astroquery.simbad import Simbad
+from astroquery.skyview import SkyView
 from astroquery.vizier import Vizier
 
 
@@ -252,3 +253,65 @@ def fetch_sdss_image(ra, dec):
     if pixels.size == 0 or float(pixels.std()) < 1.5:
         return None
     return image
+
+
+def fetch_dss2_image(ra, dec):
+    """Return a DSS2 Red photographic image from NASA SkyView."""
+    images = SkyView.get_images(
+        position=f"{ra:.6f} {dec:.6f}",
+        survey=["DSS2 Red"],
+        pixels=512,
+    )
+    if not images:
+        return None
+
+    pixels = np.asarray(images[0][0].data, dtype=float)
+    finite = pixels[np.isfinite(pixels)]
+    if finite.size == 0:
+        return None
+
+    lower, upper = np.percentile(finite, [1, 99.5])
+    if upper <= lower:
+        return None
+
+    scaled = np.clip((pixels - lower) / (upper - lower), 0, 1)
+    output = io.BytesIO()
+    mpimg.imsave(
+        output, scaled, cmap="gray", format="png", vmin=0, vmax=1,
+        origin="lower",
+    )
+    return output.getvalue()
+
+
+def fetch_survey_image(ra, dec):
+    """Try SDSS first and use DSS2 Red as an all-sky backup."""
+    try:
+        image = fetch_sdss_image(ra, dec)
+    except Exception:
+        image = None
+
+    if image is not None:
+        return {
+            "data": image,
+            "catalogue": "SDSS DR17",
+            "caption": (
+                "SDSS DR17 colour cutout · visible (ugriz) · "
+                "observations 1998–2009 · 0.4 arcsec/pixel"
+            ),
+        }
+
+    try:
+        image = fetch_dss2_image(ra, dec)
+    except Exception:
+        image = None
+
+    if image is not None:
+        return {
+            "data": image,
+            "catalogue": "DSS2 Red",
+            "caption": (
+                "DSS2 Red photographic plate · visible (red) · "
+                "plate epoch 1984–1999"
+            ),
+        }
+    return None

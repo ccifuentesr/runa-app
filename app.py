@@ -9,7 +9,7 @@ import streamlit as st
 
 from identify_star import (
     coordinates_at_epoch,
-    fetch_sdss_image,
+    fetch_survey_image,
     lookup_2mass_j,
     lookup_gaia_photometry,
     lookup_johnson_v,
@@ -841,12 +841,7 @@ if top_submitted:
             data["gaia_photometry"] = lookup_gaia_photometry(data["gaia_id"])
             data["twomass_photometry"] = lookup_2mass_j(data["twomass_id"])
             data["johnson_photometry"] = lookup_johnson_v(data["main_id"])
-            try:
-                data["sdss_image"] = fetch_sdss_image(data["ra"], data["dec"])
-                data["sdss_error"] = False
-            except Exception:
-                data["sdss_image"] = None
-                data["sdss_error"] = True
+            data["survey_image"] = fetch_survey_image(data["ra"], data["dec"])
             st.session_state["star"] = data
             st.rerun()
 
@@ -919,6 +914,15 @@ elif tool == "Identification":
             result_left, result_right = st.columns(2, gap="small")
 
             with result_left:
+                survey_image = star.get("survey_image")
+                if survey_image is not None:
+                    st.write(f"#### {survey_image['catalogue']} image")
+                    st.image(survey_image["data"])
+                    st.caption(survey_image["caption"])
+                else:
+                    st.write("#### Survey image")
+                    st.info("No SDSS or DSS2 image could be loaded.")
+
                 polar_fig = polar_position_plot(star)
                 if polar_fig is not None:
                     st.pyplot(polar_fig, use_container_width=True)
@@ -926,14 +930,6 @@ elif tool == "Identification":
                     st.caption("RA gives the polar angle; the radius is the distance from the Sun in pc.")
                 else:
                     st.info("A positive parallax and coordinates are needed for the polar view.")
-
-                st.write("#### SDSS image")
-                if star["sdss_image"] is not None:
-                    st.image(star["sdss_image"], caption="SDSS DR17 colour cutout · 0.4 arcsec/pixel")
-                elif star["sdss_error"]:
-                    st.info("The SDSS image could not be loaded.")
-                else:
-                    st.info("No SDSS image is available at these coordinates.")
 
             identifier_rows = [
                 ("SIMBAD main ID", star["main_id"], "primary name"),
@@ -1068,14 +1064,10 @@ elif tool == "Identification":
                     + quote(star["query_name"])
                 )
                 st.link_button("Open SIMBAD record ↗", simbad_url)
-                st.caption(
-                    "Coordinates are ICRS sexagesimal values. A missing value means the catalogue "
-                    "did not provide it."
-                )
 
 
     st.divider()
-    st.caption("Sources: SIMBAD, Gaia DR3, 2MASS, UCAC4 and SDSS DR17. Distance is 1000 / SIMBAD parallax (mas), for positive parallax only.")
+    st.caption("Sources: SIMBAD, Gaia DR3, 2MASS, UCAC4, SDSS DR17 and NASA SkyView/DSS2. Distance is 1000 / SIMBAD parallax (mas), for positive parallax only.")
 
 elif tool == "Photometry":
     position = star_cmd_position(star) if star is not None else None
