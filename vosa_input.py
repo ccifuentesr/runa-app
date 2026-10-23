@@ -6,6 +6,11 @@ import re
 
 # Mapping reused from cafe_tess/cafe.prepare_vosa.py.
 VOSA_FILTERS = {
+    ("APASS DR9", "B"): "Generic/Johnson.B",
+    ("APASS DR9", "V"): "Generic/Johnson.V",
+    ("APASS DR9", "g"): "Misc/APASS.sdss_g",
+    ("APASS DR9", "r"): "Misc/APASS.sdss_r",
+    ("APASS DR9", "i"): "Misc/APASS.sdss_i",
     ("Gaia DR3", "BP"): "GAIA/GAIA3.Gbp",
     ("Gaia DR3", "G"): "GAIA/GAIA3.G",
     ("Gaia DR3", "RP"): "GAIA/GAIA3.Grp",

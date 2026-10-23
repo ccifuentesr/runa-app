@@ -266,6 +266,8 @@ def sed_figure(points, object_name, show_bands=False):
         plotted_curves = set()
         for point in points:
             label = point["label"]
+            if point["catalogue"] == "SkyMapper DR4":
+                continue
             if label in plotted_curves:
                 continue
             curve = load_filter_curve(label)
@@ -1376,8 +1378,11 @@ elif tool == "Photometry":
                     st.pyplot(sed_fig, use_container_width=True)
                     plt.close(sed_fig)
                     st.caption(
-                        "Magnitudes are converted to Vega fluxes using the VOSA "
-                        "zero points used in the TFM. The plot shows λFλ in W m⁻²; "
+                        "Fluxes use the catalogue magnitude system: AB for APASS "
+                        "gri and SkyMapper, and the existing VOSA zero points for "
+                        "the other bands. SkyMapper positions use the central "
+                        "wavelengths in Onken et al. (2024), Table 1; its filter "
+                        "curves are not displayed. The plot shows λFλ in W m⁻²; "
                         "points are ordered by effective wavelength. This is the "
                         "observed SED prepared for a future VOSA fit."
                     )
@@ -1391,6 +1396,10 @@ elif tool == "Photometry":
                 )
 
                 st.write("#### VOSA")
+                st.caption(
+                    "APASS is included in the export. SkyMapper filter mappings "
+                    "are pending verification and are not exported yet."
+                )
                 vosa_file = build_vosa_input(star, catalogue_records)
                 vosa_column, link_column = st.columns(2, gap="small")
                 with link_column:

@@ -1,4 +1,15 @@
 catalogue,label,wavelength
+APASS DR9,B,4297.2
+APASS DR9,V,5394.3
+APASS DR9,g,4640.4
+APASS DR9,r,6122.3
+APASS DR9,i,7439.5
+SkyMapper DR4,u,3500
+SkyMapper DR4,v,3840
+SkyMapper DR4,g,5100
+SkyMapper DR4,r,6170
+SkyMapper DR4,i,7790
+SkyMapper DR4,z,9160
 GALEX,FUV,1549.0
 GALEX,NUV,2304.7
 SDSS9,u,3594.9

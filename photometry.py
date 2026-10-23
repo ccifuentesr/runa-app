@@ -159,6 +159,36 @@ PHOTOMETRIC_CATALOGS = {
             ("NUV", "NUVmag", "e_NUVmag", "#4f46e5", "near-UV"),
         ],
     },
+    "APASS DR9": {
+        "table": "II/336/apass9",
+        "id_column": None,
+        "prefixes": ("APASS",),
+        "columns": ["Bmag", "e_Bmag", "Vmag", "e_Vmag",
+                    "g'mag", "e_g'mag", "r'mag", "e_r'mag", "i'mag", "e_i'mag"],
+        "bands": [
+            ("B", "Bmag", "e_Bmag", "#4d7dff", "blue-optical"),
+            ("V", "Vmag", "e_Vmag", "#45c99a", "optical"),
+            ("g", "g'mag", "e_g'mag", "#2e9bff", "optical"),
+            ("r", "r'mag", "e_r'mag", "#e77c4f", "optical"),
+            ("i", "i'mag", "e_i'mag", "#c7d65a", "red-optical"),
+        ],
+    },
+    "SkyMapper DR4": {
+        "table": "II/379/smssdr4",
+        "id_column": None,
+        "prefixes": ("SMSS J",),
+        "columns": ["ObjectId", "Gaia3Id1", "uPSF", "e_uPSF", "vPSF", "e_vPSF",
+                    "gPSF", "e_gPSF", "rPSF", "e_rPSF", "iPSF", "e_iPSF",
+                    "zPSF", "e_zPSF"],
+        "bands": [
+            ("u", "uPSF", "e_uPSF", "#6d5dfc", "near-UV"),
+            ("v", "vPSF", "e_vPSF", "#6264ed", "violet"),
+            ("g", "gPSF", "e_gPSF", "#2e9bff", "optical"),
+            ("r", "rPSF", "e_rPSF", "#e77c4f", "optical"),
+            ("i", "iPSF", "e_iPSF", "#c7d65a", "red-optical"),
+            ("z", "zPSF", "e_zPSF", "#e6a94e", "red-optical"),
+        ],
+    },
 }
 
 
@@ -211,7 +241,7 @@ def _query_catalog(star, config):
         return None, None
 
     vizier = Vizier(
-        columns=config["columns"],
+        columns=["+_r", *config["columns"]],
         catalog=config["table"],
         row_limit=10,
     )
@@ -238,6 +268,12 @@ def _query_catalog(star, config):
             return None, query_name
     else:
         row = table[0]
+    if config["table"] == "II/379/smssdr4" and star.get("gaia_id"):
+        matches = [candidate for candidate in table
+                   if str(candidate["Gaia3Id1"]) == str(star["gaia_id"])]
+        if not matches:
+            return None, query_name
+        row = matches[0]
     return row, query_name
 
 
@@ -320,7 +356,13 @@ def build_sed_points(records):
         for band in record.get("bands", []):
             magnitude = _number(band.get("value"))
             wavelength = _number(band.get("wavelength"))
-            zero_point = VEGA_ZERO_POINTS.get(band.get("label"))
+            label = band.get("label")
+            is_ab = (record["catalogue"] == "SkyMapper DR4" or
+                     (record["catalogue"] == "APASS DR9" and label in ("g", "r", "i")))
+            zero_point = VEGA_ZERO_POINTS.get(label)
+            if is_ab and wavelength is not None:
+                # AB zero point: 3631 Jy; c is in Angstrom per second.
+                zero_point = 3631e-26 * 2.99792458e18 / wavelength ** 2 / ERG_CM2_TO_W_M2
             if magnitude is None or wavelength is None or zero_point is None:
                 continue
 
@@ -336,7 +378,8 @@ def build_sed_points(records):
                 "catalogue": record["catalogue"],
                 "label": band["label"],
                 "wavelength": wavelength,
-                "width": EFFECTIVE_WIDTHS.get(band.get("label")),
+                "width": (None if record["catalogue"] == "SkyMapper DR4"
+                          else EFFECTIVE_WIDTHS.get(label)),
                 "flux": flux,
                 "flux_error": flux_error,
                 "lambda_flux": wavelength * flux,
