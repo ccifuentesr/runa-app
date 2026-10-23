@@ -1364,6 +1364,11 @@ elif tool == "Photometry":
             else:
                 st.write("#### Spectral energy distribution")
                 sed_points = build_sed_points(catalogue_records)
+                st.caption(
+                    "Optical preference per band: APASS → SkyMapper → SDSS9 → "
+                    "UCAC4, by availability. All measurements remain in the table. "
+                    "Catalogue preference does not replace quality checks."
+                )
                 if len(sed_points) < 2:
                     st.info(
                         "There are not enough calibrated bands to build the SED. "

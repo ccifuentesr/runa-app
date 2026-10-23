@@ -7,6 +7,7 @@ import numpy as np
 import astropy.units as u
 from astroquery.gaia import Gaia
 from astroquery.vizier import Vizier
+from catalogue_selection import OPTICAL_PRIORITY, preferred_photometry
 
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
@@ -335,7 +336,9 @@ def fetch_catalogue_photometry(star):
         "bands": gaia_bands,
     })
 
-    for name, config in PHOTOMETRIC_CATALOGS.items():
+    catalogue_order = ["AllWISE", "2MASS", *OPTICAL_PRIORITY, "GALEX"]
+    for name in catalogue_order:
+        config = PHOTOMETRIC_CATALOGS[name]
         try:
             records.append(_catalogue_record(name, config, star))
         except Exception:
@@ -362,7 +365,7 @@ def build_sed_points(records):
     lambda F_lambda, following the approach in the TFM code.
     """
     points = []
-    for record in records or []:
+    for record in preferred_photometry(records):
         for band in record.get("bands", []):
             magnitude = _number(band.get("value"))
             wavelength = _number(band.get("wavelength"))

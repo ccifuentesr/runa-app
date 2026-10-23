@@ -2,6 +2,7 @@
 
 import math
 import re
+from catalogue_selection import preferred_photometry
 
 
 # Mapping reused from cafe_tess/cafe.prepare_vosa.py.
@@ -68,7 +69,7 @@ def build_vosa_input(star, records):
     )
     object_name = re.sub(r"\s+", "_", str(star["main_id"]).strip())
     lines = []
-    for record in records or []:
+    for record in preferred_photometry(records, allowed_filters=VOSA_FILTERS):
         catalogue = record.get("catalogue")
         for band in record.get("bands", []):
             vosa_filter = VOSA_FILTERS.get((catalogue, band.get("label")))
