@@ -79,8 +79,6 @@ def build_vosa_input(star, records):
             error = _number(band.get("error"))
             if catalogue == "Gaia DR3" and error is None:
                 error = GAIA_ERROR_FLOORS[band["label"]]
-            if catalogue == "UCAC4" and error is not None:
-                error /= 100.0
             if error is None or error <= 0:
                 continue
 

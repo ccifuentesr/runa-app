@@ -215,7 +215,7 @@ def _normalise_identifier(value):
     if value is None or np.ma.is_masked(value):
         return None
     text = " ".join(str(value).strip().upper().split())
-    for prefix in ("WISEA J", "WISEA ", "2MASS J", "2MASS "):
+    for prefix in ("WISEA J", "WISEA ", "2MASS J", "2MASS ", "UCAC4 "):
         if text.startswith(prefix):
             text = text[len(prefix):]
             break
@@ -246,7 +246,15 @@ def _query_catalog(star, config):
         row_limit=10,
     )
     try:
-        results = vizier.query_object(query_name, radius=5 * u.arcsec)
+        if identifier and config.get("id_column"):
+            catalogue_id = _normalise_identifier(identifier)
+            if config["id_column"] == "AllWISE":
+                catalogue_id = "J" + catalogue_id
+            results = vizier.query_constraints(**{
+                config["id_column"]: "=" + catalogue_id
+            })
+        else:
+            results = vizier.query_object(query_name, radius=5 * u.arcsec)
     except Exception:
         results = None
     if not results:
@@ -284,6 +292,8 @@ def _catalogue_record(name, config, star):
     for label, value_column, error_column, colour, spectral_range in config["bands"]:
         value = _number(row[value_column]) if row is not None else None
         error = _number(row[error_column]) if row is not None else None
+        if name == "UCAC4" and error is not None:
+            error /= 100.0
         bands.append({
             "label": label,
             "value": value,
