@@ -47,13 +47,14 @@ from train_model import load_stars
 from vosa_input import build_vosa_input
 from cifuentes20 import load_table6
 from local_volume import local_volume_status
-from published_luminosities import published_luminosities
+from published_parameters import published_stellar_parameters
 
 
 def data_row(label, value, source=None, error=None, unit=None):
     """Build one compact row for the identification panel."""
     label_html = escape(str(label)).replace("M_G", "M<sub>G</sub>")
     label_html = label_html.replace("M_J", "M<sub>J</sub>")
+    label_html = label_html.replace("T_eff", "T<sub>eff</sub>")
     error_html = (
         f'<span class="runa-error">({escape(error)})</span>' if error else ""
     )
@@ -1508,7 +1509,8 @@ elif tool == "Parameters":
         unsafe_allow_html=True,
     )
     parameters = calculate_parameters(star) if star is not None else None
-    published_luminosity = published_luminosities(star)
+    published_parameters = published_stellar_parameters(star)
+    published_luminosity = published_parameters.get("luminosity", [])
     preferred_luminosity = next(
         (entry for entry in published_luminosity if entry["reference"].endswith("(2025)")),
         published_luminosity[0] if published_luminosity else None,
@@ -1577,107 +1579,213 @@ elif tool == "Parameters":
                             f"{magnitude['error']:.3f} mag"
                             if magnitude["error"] is not None else None,
                         )
-            st.caption("Derived from Gaia DR3 and 2MASS photometry with positive Gaia DR3 parallax.")
+            st.caption(
+                "Derived from Gaia DR3 and 2MASS photometry with positive "
+                "Gaia DR3 parallax."
+            )
+            if metallicity_inputs:
+                data_section("Metallicity inputs", metallicity_inputs)
+                st.caption(
+                    "M_G above and these Gaia/WISE magnitudes are used for "
+                    "the photometric metallicity estimate."
+                )
 
     with result_card:
         with st.container(border=True):
-            st.subheader("Luminosities")
+            st.subheader("Luminosity")
             if star is None:
                 st.write("Choose a star in **Identification** first.")
             else:
-                if published_luminosity:
-                    st.write("#### Published luminosities")
-                    published_rows = [
-                        (
-                            entry["reference"], f'{entry["value"]:.6g}',
-                            entry["reference"],
-                            f'{entry["error"]:.3g}' if entry["error"] is not None else None,
-                            "L☉",
-                        )
-                        for entry in published_luminosity
-                    ]
-                    data_section("Cifuentes catalogues", published_rows)
+                luminosity_rows = [
+                    (
+                        "Bolometric luminosity",
+                        f'{entry["value"]:.6g}',
+                        entry["reference"],
+                        f'{entry["error"]:.3g}' if entry["error"] is not None else None,
+                        "L☉",
+                    )
+                    for entry in published_luminosity
+                ]
+                if luminosity_rows:
+                    data_section("Published", luminosity_rows)
                 else:
-                    st.info(
-                        "This object was not matched to the Cifuentes et al. (2020) or "
-                        "Cifuentes et al. (2025) catalogues."
-                    )
+                    st.write("#### Published")
+                    st.caption("No published value is available from the connected sources.")
 
-                if eker_mass is not None:
-                    large_metric(
-                        "Estimated mass",
-                        f'{eker_mass["value"]:.4f} M☉',
-                        f'{eker_mass["error"]:.4f} M☉',
-                    )
-                    st.caption(
-                        f'From {preferred_luminosity["reference"]} luminosity via Eker et al. '
-                        f'(2018), main-sequence interval {eker_mass["minimum"]:.3f}–'
-                        f'{eker_mass["maximum"]:.2f} M☉. The uncertainty includes the published '
-                        "luminosity error and the relation scatter."
-                    )
-                elif preferred_luminosity:
-                    st.warning(
-                        "The preferred published luminosity lies outside Eker et al. (2018)'s "
-                        "0.179–31 M☉ main-sequence calibration after inversion; no mass is shown."
-                    )
-
+                estimate_rows = []
                 if parameters["luminosities"]:
-                    st.write("#### Photometric estimates")
-                    estimates = [
-                        (band, parameters["luminosities"].get(band))
-                        for band in ("M_G", "M_J")
-                        if parameters["luminosities"].get(band) is not None
-                    ]
-                    estimate_columns = st.columns(len(estimates), gap="small")
-                    for column, (band, estimate) in zip(estimate_columns, estimates):
-                        with column:
-                            band_label = "M_G" if band == "M_G" else "M_J"
-                            large_metric(
-                                f"L / L☉ from {band_label}",
-                                f"{estimate['luminosity']:.6g} L☉",
-                                f"{estimate['luminosity_error']:.6g} L☉",
+                    for band in ("M_G", "M_J"):
+                        estimate = parameters["luminosities"].get(band)
+                        if estimate is None:
+                            continue
+                        estimate_rows.append(
+                            (
+                                f"From {band}",
+                                f"{estimate['luminosity']:.6g}",
+                                "Cifuentes et al. (2020), Table 5",
+                                f"{estimate['luminosity_error']:.3g}",
+                                "L☉",
                             )
+                        )
+                if estimate_rows:
+                    data_section("Estimated", estimate_rows)
+                else:
+                    st.write("#### Estimated")
                     st.caption(
-                        "Source: Cifuentes et al. (2020), Table 5. These are photometric "
-                        "relations, separate from the catalogue luminosities above."
+                        "No estimate is available for the current inputs and calibration ranges."
                     )
 
         with st.container(border=True):
-            st.subheader("Photometric metallicity")
+            st.subheader("Radius")
             if star is None:
                 st.write("Choose a star in **Identification** first.")
-            elif catalogue_records is None:
-                st.info(
-                    "Run **Search photometric catalogues** in Photometry first to "
-                    "download the Gaia and AllWISE measurements used here."
-                )
-            elif metallicity is None:
-                st.warning(
-                    "The downloaded catalogues do not contain all the measurements "
-                    "needed for this estimate: Gaia G/BP/RP, AllWISE W1/W2 and a "
-                    "positive parallax."
-                )
             else:
-                large_metric(
-                    "[Fe/H]",
-                    f"{metallicity['value']:.3f} dex",
-                    f"{metallicity['error']:.3f} dex",
-                )
-                st.caption("Source: Duque-Arribas et al. (2023), Gaia/WISE relation.")
+                radius_rows = [
+                    (
+                        "Radius",
+                        f'{entry["value"]:.4f}',
+                        entry["reference"],
+                        f'{entry["error"]:.4f}' if entry["error"] is not None else None,
+                        "R☉",
+                    )
+                    for entry in published_parameters.get("radius", [])
+                ]
+                if radius_rows:
+                    data_section("Published", radius_rows)
+                else:
+                    st.write("#### Published")
+                    st.caption("No published value is available from the connected sources.")
+                st.write("#### Estimated")
+                st.caption("No radius relation is currently implemented.")
 
-            if star is not None and catalogue_records is not None:
-                st.write("#### Metallicity inputs")
-                data_section("Gaia / WISE photometry", metallicity_inputs)
-                st.caption("Gaia G and the positive Gaia DR3 parallax are also used in the relation.")
+        with st.container(border=True):
+            st.subheader("Mass")
+            if star is None:
+                st.write("Choose a star in **Identification** first.")
+            else:
+                mass_rows = [
+                    (
+                        "Mass",
+                        f'{entry["value"]:.4f}',
+                        entry["reference"],
+                        f'{entry["error"]:.4f}' if entry["error"] is not None else None,
+                        "M☉",
+                    )
+                    for entry in published_parameters.get("mass", [])
+                ]
+                if mass_rows:
+                    data_section("Published", mass_rows)
+                else:
+                    st.write("#### Published")
+                    st.caption("No published value is available from the connected sources.")
+
+                if eker_mass is not None:
+                    data_section(
+                        "Estimated",
+                        [
+                            (
+                                "Mass",
+                                f'{eker_mass["value"]:.4f}',
+                                "Eker et al. (2018)",
+                                f'{eker_mass["error"]:.4f}',
+                                "M☉",
+                            )
+                        ],
+                    )
+                    st.caption(
+                        f'Main-sequence interval: {eker_mass["minimum"]:.3f}–'
+                        f'{eker_mass["maximum"]:.2f} M☉. The uncertainty combines the '
+                        "luminosity error and the relation scatter. Input luminosity: "
+                        f'{preferred_luminosity["reference"]}.'
+                    )
+                else:
+                    st.write("#### Estimated")
+                    if preferred_luminosity:
+                        st.warning(
+                            "The selected luminosity lies outside the Eker et al. (2018) "
+                            "main-sequence calibration, so no mass is shown."
+                        )
+                    else:
+                        st.caption("A published luminosity is required for this estimate.")
+
+        with st.container(border=True):
+            st.subheader("Effective temperature")
+            if star is None:
+                st.write("Choose a star in **Identification** first.")
+            else:
+                temperature_rows = [
+                    (
+                        "T_eff",
+                        f'{entry["value"]:.0f}',
+                        entry["reference"],
+                        f'{entry["error"]:.0f}' if entry["error"] is not None else None,
+                        "K",
+                    )
+                    for entry in published_parameters.get(
+                        "effective_temperature", []
+                    )
+                ]
+                if temperature_rows:
+                    data_section("Published", temperature_rows)
+                else:
+                    st.write("#### Published")
+                    st.caption("No published value is available from the connected sources.")
+                st.write("#### Estimated")
+                st.caption("No effective-temperature relation is currently implemented.")
+
+        with st.container(border=True):
+            st.subheader("Metallicity")
+            if star is None:
+                st.write("Choose a star in **Identification** first.")
+            else:
+                metallicity_rows = [
+                    (
+                        "[Fe/H]",
+                        f'{entry["value"]:.3f}',
+                        entry["reference"],
+                        f'{entry["error"]:.3f}' if entry["error"] is not None else None,
+                        "dex",
+                    )
+                    for entry in published_parameters.get("metallicity", [])
+                ]
+                if metallicity_rows:
+                    data_section("Published", metallicity_rows)
+                else:
+                    st.write("#### Published")
+                    st.caption("No published value is available from the connected sources.")
+
+                if metallicity is not None:
+                    data_section(
+                        "Estimated",
+                        [
+                            (
+                                "[Fe/H]",
+                                f"{metallicity['value']:.3f}",
+                                "Duque-Arribas et al. (2023)",
+                                f"{metallicity['error']:.3f}",
+                                "dex",
+                            )
+                        ],
+                    )
+                else:
+                    st.write("#### Estimated")
+                    if catalogue_records is None:
+                        st.info(
+                            "Run **Search photometric catalogues** in Photometry first. "
+                            "This estimate needs Gaia and AllWISE photometry."
+                        )
+                    else:
+                        st.warning(
+                            "The downloaded data do not contain all inputs required by "
+                            "the Duque-Arribas et al. (2023) relation."
+                        )
 
     st.divider()
     st.caption(
-        "Method: M = m + 5 log10(parallax) − 10, with parallax in milliarcseconds. "
-        "Published luminosities are matched in the Cifuentes et al. (2020, 2025) catalogues; "
-        "the 2025 value is preferred for the Eker et al. (2018) mass relation. That relation is "
-        "used only within its published main-sequence mass intervals. Photometric luminosities use "
-        "Cifuentes et al. (2020), Table 5. [Fe/H] uses the published Duque-Arribas et al. (2023) "
-        "Gaia/WISE relation, ported from the existing RUNA source script."
+        "Published values retain their individual source. Estimated values show the "
+        "relation used. Absolute magnitudes use M = m + 5 log10(parallax) − 10, with "
+        "parallax in milliarcseconds. No radius or effective-temperature relation is "
+        "currently implemented."
     )
 
 elif tool == "Kinematics":
