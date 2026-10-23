@@ -579,6 +579,12 @@ def nearby_gaia_sources_v2(ra, dec, radius_arcsec):
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
+def multiplicity_criteria(gaia_id):
+    """Keep the Gaia multiplicity indicators for one day."""
+    return check_multiplicity(gaia_id)
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
 def rvs_reference_sample():
     """Keep the ten-parsec Gaia RV comparison sample for one day."""
     return query_rvs_reference()
@@ -821,10 +827,6 @@ st.markdown(
 
 if "star" not in st.session_state:
     st.session_state["star"] = None
-if "multiplicity_result" not in st.session_state:
-    st.session_state["multiplicity_result"] = None
-if "show_gaia_parameters" not in st.session_state:
-    st.session_state["show_gaia_parameters"] = False
 if "catalogue_photometry" not in st.session_state:
     st.session_state["catalogue_photometry"] = None
 if "banyan_result" not in st.session_state:
@@ -891,9 +893,7 @@ star = st.session_state["star"]
 search_error = None
 if top_submitted:
     st.session_state["star"] = None
-    st.session_state["multiplicity_result"] = None
     st.session_state["banyan_result"] = None
-    st.session_state["show_gaia_parameters"] = False
     st.session_state["catalogue_photometry"] = None
     st.session_state["tess_light_curve"] = None
     star = None
@@ -2143,66 +2143,70 @@ elif tool == "Planets":
     )
 
 elif tool == "Multiplicity":
+    query_error = None
+    answer = None
+    if star is not None and star["gaia_id"]:
+        try:
+            with st.spinner("Loading Gaia multiplicity criteria..."):
+                answer = multiplicity_criteria(star["gaia_id"])
+        except ValueError as error:
+            query_error = str(error)
+        except Exception:
+            query_error = "The Gaia query failed. Please try again later."
+
     with input_card:
         object_panel_title(star)
         if star is None:
             st.write("Load an object in Identification first.")
-            submitted = False
-            view_gaia = False
         elif not star["gaia_id"]:
             st.write("No Gaia DR3 identifier in SIMBAD.")
-            submitted = False
-            view_gaia = False
         else:
             st.markdown(
                 f'<div class="runa-gaia-id">Gaia DR3 ID: '
                 f'<strong>{escape(str(star["gaia_id"]))}</strong></div>',
                 unsafe_allow_html=True,
             )
-            check_col, view_col = st.columns(2, gap="small")
-            with check_col:
-                submitted = st.button("Check indicators", use_container_width=True)
-            with view_col:
-                view_gaia = st.button("View nearby sources", use_container_width=True)
-            if view_gaia:
-                st.session_state["show_gaia_parameters"] = True
-                st.rerun()
-            if st.session_state["show_gaia_parameters"]:
-                radius_arcsec = st.selectbox(
-                    "Nearby-source radius",
-                    [5, 10, 30, 60, 180, 300],
-                    index=4,
-                    format_func=radius_label,
-                    key=f"multiplicity_radius_{star['main_id']}",
-                )
-
-    query_error = None
-    if submitted:
-        st.session_state["multiplicity_result"] = None
-        try:
-            st.session_state["multiplicity_result"] = check_multiplicity(star["gaia_id"])
-        except ValueError as error:
-            query_error = str(error)
-        except Exception:
-            query_error = "The Gaia query failed. Please try again later."
-
-    nearby_error = None
-    nearby = None
-    if (st.session_state["show_gaia_parameters"] and star is not None
-            and star["gaia_id"]):
-        gaia_ra = star["gaia_photometry"].get("ra", star["ra"])
-        gaia_dec = star["gaia_photometry"].get("dec", star["dec"])
-        try:
-            with st.spinner("Loading nearby Gaia sources..."):
-                nearby = nearby_gaia_sources_v2(
-                    gaia_ra, gaia_dec, radius_arcsec
-                )
-            nearby = prepare_neighbours(nearby, gaia_ra, gaia_dec)
-        except Exception:
-            nearby_error = "The nearby Gaia query could not be completed."
-
-    show_nearby = st.session_state["show_gaia_parameters"] and star is not None
-    answer = st.session_state["multiplicity_result"]
+    with result_card:
+        st.write("### Nearby Gaia sources")
+        if star is None:
+            st.write("Choose a star in **Identification** first.")
+        elif not star["gaia_id"]:
+            st.write("A Gaia DR3 ID is needed to query nearby sources.")
+        else:
+            radius_arcsec = st.selectbox(
+                "Nearby-source radius",
+                [5, 10, 30, 60, 180, 300],
+                index=4,
+                format_func=radius_label,
+                key=f"multiplicity_radius_{star['main_id']}",
+            )
+            gaia_ra = star["gaia_photometry"].get("ra", star["ra"])
+            gaia_dec = star["gaia_photometry"].get("dec", star["dec"])
+            try:
+                with st.spinner("Loading nearby Gaia sources..."):
+                    nearby = nearby_gaia_sources_v2(
+                        gaia_ra, gaia_dec, radius_arcsec
+                    )
+                nearby = prepare_neighbours(nearby, gaia_ra, gaia_dec)
+            except Exception:
+                st.error("The nearby Gaia query could not be completed.")
+            else:
+                if nearby:
+                    local_fig = local_proper_motion_plot(
+                        nearby, radius_arcsec, star.get("gaia_id")
+                    )
+                    if local_fig is not None:
+                        st.pyplot(local_fig, use_container_width=True)
+                        plt.close(local_fig)
+                    with st.expander("Gaia source table", expanded=False):
+                        neighbour_table(nearby, star.get("gaia_id"))
+                    st.caption(
+                        f"{len(nearby)} Gaia source(s) within "
+                        f"{radius_label(radius_arcsec)}. "
+                        "No parallax filter applied."
+                    )
+                else:
+                    st.info("No Gaia sources were found in this radius.")
 
     with parameters_card:
         st.subheader("Multiplicity criteria")
@@ -2212,8 +2216,6 @@ elif tool == "Multiplicity":
             st.write("Choose a star in **Identification** first.")
         elif not star["gaia_id"]:
             st.write("A Gaia DR3 ID is needed for these indicators.")
-        elif answer is None:
-            st.write("Select **Check indicators** for the loaded star.")
         else:
             values, criteria = answer
             multiplicity_table(values, criteria)
@@ -2259,31 +2261,6 @@ elif tool == "Multiplicity":
                     "An RVS score needs the Gaia RV p-value, renormalised GOF "
                     "and at least one transit count."
                 )
-
-    with result_card:
-        if show_nearby:
-            st.write("### Nearby Gaia sources")
-            if nearby_error:
-                st.error(nearby_error)
-            elif nearby:
-                local_fig = local_proper_motion_plot(
-                    nearby, radius_arcsec, star.get("gaia_id")
-                )
-                if local_fig is not None:
-                    st.pyplot(local_fig, use_container_width=True)
-                    plt.close(local_fig)
-                with st.expander("Gaia source table", expanded=False):
-                    neighbour_table(nearby, star.get("gaia_id"))
-                st.caption(
-                    f"{len(nearby)} Gaia source(s) within "
-                    f"{radius_label(radius_arcsec)}. "
-                    "No parallax filter applied."
-                )
-            else:
-                st.info("No Gaia sources were found in this radius.")
-        else:
-            st.subheader("Result")
-            st.write("Select **View nearby sources** to inspect nearby Gaia sources.")
 
     st.divider()
     st.caption("Method: the seven Gaia DR3 statistical criteria in Cifuentes et al. (2025), Table 3. Missing values remain unavailable.")
