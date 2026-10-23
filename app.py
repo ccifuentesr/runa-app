@@ -83,6 +83,46 @@ def data_section(title, rows):
         )
 
 
+def parameter_section(title, rows, empty_message=None):
+    """Show published or estimated values inside a compact parameter card."""
+    kind = "estimated" if title.lower() == "estimated" else "published"
+    content = []
+    for label, value, source, error, unit in rows:
+        if value is None:
+            continue
+        label_html = escape(str(label)).replace("M_G", "M<sub>G</sub>")
+        label_html = label_html.replace("M_J", "M<sub>J</sub>")
+        label_html = label_html.replace("T_eff", "T<sub>eff</sub>")
+        error_html = (
+            f'<span class="runa-parameter-error">({escape(error)})</span>'
+            if error else ""
+        )
+        unit_html = (
+            f'<span class="runa-parameter-unit">{escape(unit)}</span>'
+            if unit else ""
+        )
+        source_html = escape(source) if source else "Source unavailable"
+        content.append(
+            '<div class="runa-parameter-row">'
+            f'<div class="runa-parameter-label">{label_html}</div>'
+            '<div class="runa-parameter-value">'
+            f'{escape(str(value))}{error_html}{unit_html}</div>'
+            f'<div class="runa-parameter-source">{source_html}</div></div>'
+        )
+
+    if not content and empty_message:
+        content.append(
+            f'<div class="runa-parameter-empty">{escape(empty_message)}</div>'
+        )
+    if content:
+        st.markdown(
+            f'<section class="runa-parameter-section runa-parameter-{kind}">'
+            f'<div class="runa-parameter-kind">{escape(title)}</div>'
+            f'{"".join(content)}</section>',
+            unsafe_allow_html=True,
+        )
+
+
 def cifuentes20_table(rows):
     """Render Cifuentes et al. (2020), Table 6 in RUNA's data-table style."""
     header = (
@@ -667,6 +707,25 @@ st.markdown(
                      white-space: nowrap;}
     .runa-data-source {color: #777782; font-size: .72rem; text-align: right;
                        white-space: nowrap; padding-top: .08rem; justify-self: end;}
+    .runa-parameter-section {overflow: hidden; border: 1px solid #2d2d33;
+                             border-radius: 12px; margin: 0 0 .7rem;
+                             background: #121215;}
+    .runa-parameter-kind {color: #8b8b95; font-size: .68rem; font-weight: 680;
+                          letter-spacing: .09em; text-transform: uppercase;
+                          padding: .7rem .85rem .35rem;}
+    .runa-parameter-estimated .runa-parameter-kind {color: #6ee7b7;}
+    .runa-parameter-row {padding: .55rem .85rem .7rem;}
+    .runa-parameter-row + .runa-parameter-row {border-top: 1px solid #28282e;}
+    .runa-parameter-label {color: #9a9aa4; font-size: .78rem; margin-bottom: .16rem;}
+    .runa-parameter-value {color: #f1f1f3; font-size: 1.12rem; font-weight: 620;
+                           line-height: 1.25; font-variant-numeric: tabular-nums;}
+    .runa-parameter-error {color: #92929d; font-size: .9rem; font-weight: 430;
+                           margin-left: .4rem;}
+    .runa-parameter-unit {color: #a4a4ad; font-size: .82rem; font-weight: 430;
+                          margin-left: .42rem;}
+    .runa-parameter-source {color: #777782; font-size: .72rem; margin-top: .2rem;}
+    .runa-parameter-empty {color: #85858f; font-size: .8rem; line-height: 1.4;
+                           padding: .45rem .85rem .75rem;}
     .runa-neighbour-table {overflow: hidden; border: 1px solid #2d2d33;
                            border-radius: 12px; margin: .7rem 0 .85rem;
                            background: #121215;}
@@ -867,12 +926,19 @@ st.markdown(
 if search_error:
     st.error(search_error)
 
+if tool == "Parameters":
+    st.markdown(
+        '<div class="runa-preparing">Section in preparation · estimates may change.</div>',
+        unsafe_allow_html=True,
+    )
+
 if tool in ("Identification", "Data"):
     input_card = None
     parameters_card = None
     result_card = st.container(border=True) if tool == "Identification" else None
 else:
-    inputs, results = st.columns([1, 1], gap="small")
+    column_widths = [0.62, 1.38] if tool == "Parameters" else [1, 1]
+    inputs, results = st.columns(column_widths, gap="small")
     input_card = inputs.container(border=True)
     parameters_card = inputs.container(border=True) if tool == "Multiplicity" else None
     spectral_type_card = (
@@ -1504,10 +1570,6 @@ elif tool == "Photometry":
     )
 
 elif tool == "Parameters":
-    st.markdown(
-        '<div class="runa-preparing">Section in preparation · estimates may change.</div>',
-        unsafe_allow_html=True,
-    )
     parameters = calculate_parameters(star) if star is not None else None
     published_parameters = published_stellar_parameters(star)
     published_luminosity = published_parameters.get("luminosity", [])
@@ -1591,194 +1653,177 @@ elif tool == "Parameters":
                 )
 
     with result_card:
-        with st.container(border=True):
-            st.subheader("Luminosity")
-            if star is None:
-                st.write("Choose a star in **Identification** first.")
-            else:
-                luminosity_rows = [
-                    (
-                        "Bolometric luminosity",
-                        f'{entry["value"]:.6g}',
-                        entry["reference"],
-                        f'{entry["error"]:.3g}' if entry["error"] is not None else None,
-                        "L☉",
-                    )
-                    for entry in published_luminosity
-                ]
-                if luminosity_rows:
-                    data_section("Published", luminosity_rows)
-                else:
-                    st.write("#### Published")
-                    st.caption("No published value is available from the connected sources.")
-
-                estimate_rows = []
-                if parameters["luminosities"]:
-                    for band in ("M_G", "M_J"):
-                        estimate = parameters["luminosities"].get(band)
-                        if estimate is None:
-                            continue
-                        estimate_rows.append(
-                            (
-                                f"From {band}",
-                                f"{estimate['luminosity']:.6g}",
-                                "Cifuentes et al. (2020), Table 5",
-                                f"{estimate['luminosity_error']:.3g}",
-                                "L☉",
-                            )
+        if star is None:
+            st.info("Choose a star in **Identification** first.")
+        else:
+            luminosity_rows = [
+                (
+                    "Bolometric luminosity",
+                    f'{entry["value"]:.6g}',
+                    entry["reference"],
+                    f'{entry["error"]:.3g}' if entry["error"] is not None else None,
+                    "L☉",
+                )
+                for entry in published_luminosity
+            ]
+            luminosity_estimates = []
+            for band in ("M_G", "M_J"):
+                estimate = parameters["luminosities"].get(band)
+                if estimate is not None:
+                    luminosity_estimates.append(
+                        (
+                            f"From {band}",
+                            f"{estimate['luminosity']:.6g}",
+                            "Cifuentes et al. (2020), Table 5",
+                            f"{estimate['luminosity_error']:.3g}",
+                            "L☉",
                         )
-                if estimate_rows:
-                    data_section("Estimated", estimate_rows)
-                else:
-                    st.write("#### Estimated")
-                    st.caption(
-                        "No estimate is available for the current inputs and calibration ranges."
                     )
 
-        with st.container(border=True):
-            st.subheader("Radius")
-            if star is None:
-                st.write("Choose a star in **Identification** first.")
-            else:
-                radius_rows = [
+            radius_rows = [
+                (
+                    "Published value",
+                    f'{entry["value"]:.4f}',
+                    entry["reference"],
+                    f'{entry["error"]:.4f}' if entry["error"] is not None else None,
+                    "R☉",
+                )
+                for entry in published_parameters.get("radius", [])
+            ]
+            mass_rows = [
+                (
+                    "Published value",
+                    f'{entry["value"]:.4f}',
+                    entry["reference"],
+                    f'{entry["error"]:.4f}' if entry["error"] is not None else None,
+                    "M☉",
+                )
+                for entry in published_parameters.get("mass", [])
+            ]
+            mass_estimates = []
+            if eker_mass is not None:
+                mass_estimates.append(
                     (
-                        "Radius",
-                        f'{entry["value"]:.4f}',
-                        entry["reference"],
-                        f'{entry["error"]:.4f}' if entry["error"] is not None else None,
-                        "R☉",
-                    )
-                    for entry in published_parameters.get("radius", [])
-                ]
-                if radius_rows:
-                    data_section("Published", radius_rows)
-                else:
-                    st.write("#### Published")
-                    st.caption("No published value is available from the connected sources.")
-                st.write("#### Estimated")
-                st.caption("No radius relation is currently implemented.")
-
-        with st.container(border=True):
-            st.subheader("Mass")
-            if star is None:
-                st.write("Choose a star in **Identification** first.")
-            else:
-                mass_rows = [
-                    (
-                        "Mass",
-                        f'{entry["value"]:.4f}',
-                        entry["reference"],
-                        f'{entry["error"]:.4f}' if entry["error"] is not None else None,
+                        "From luminosity",
+                        f'{eker_mass["value"]:.4f}',
+                        "Eker et al. (2018)",
+                        f'{eker_mass["error"]:.4f}',
                         "M☉",
                     )
-                    for entry in published_parameters.get("mass", [])
-                ]
-                if mass_rows:
-                    data_section("Published", mass_rows)
-                else:
-                    st.write("#### Published")
-                    st.caption("No published value is available from the connected sources.")
+                )
 
-                if eker_mass is not None:
-                    data_section(
-                        "Estimated",
-                        [
-                            (
-                                "Mass",
-                                f'{eker_mass["value"]:.4f}',
-                                "Eker et al. (2018)",
-                                f'{eker_mass["error"]:.4f}',
-                                "M☉",
-                            )
-                        ],
-                    )
-                    st.caption(
-                        f'Main-sequence interval: {eker_mass["minimum"]:.3f}–'
-                        f'{eker_mass["maximum"]:.2f} M☉. The uncertainty combines the '
-                        "luminosity error and the relation scatter. Input luminosity: "
-                        f'{preferred_luminosity["reference"]}.'
-                    )
-                else:
-                    st.write("#### Estimated")
-                    if preferred_luminosity:
-                        st.warning(
-                            "The selected luminosity lies outside the Eker et al. (2018) "
-                            "main-sequence calibration, so no mass is shown."
-                        )
-                    else:
-                        st.caption("A published luminosity is required for this estimate.")
-
-        with st.container(border=True):
-            st.subheader("Effective temperature")
-            if star is None:
-                st.write("Choose a star in **Identification** first.")
-            else:
-                temperature_rows = [
-                    (
-                        "T_eff",
-                        f'{entry["value"]:.0f}',
-                        entry["reference"],
-                        f'{entry["error"]:.0f}' if entry["error"] is not None else None,
-                        "K",
-                    )
-                    for entry in published_parameters.get(
-                        "effective_temperature", []
-                    )
-                ]
-                if temperature_rows:
-                    data_section("Published", temperature_rows)
-                else:
-                    st.write("#### Published")
-                    st.caption("No published value is available from the connected sources.")
-                st.write("#### Estimated")
-                st.caption("No effective-temperature relation is currently implemented.")
-
-        with st.container(border=True):
-            st.subheader("Metallicity")
-            if star is None:
-                st.write("Choose a star in **Identification** first.")
-            else:
-                metallicity_rows = [
+            temperature_rows = [
+                (
+                    "Published value",
+                    f'{entry["value"]:.0f}',
+                    entry["reference"],
+                    f'{entry["error"]:.0f}' if entry["error"] is not None else None,
+                    "K",
+                )
+                for entry in published_parameters.get("effective_temperature", [])
+            ]
+            metallicity_rows = [
+                (
+                    "[Fe/H]",
+                    f'{entry["value"]:.3f}',
+                    entry["reference"],
+                    f'{entry["error"]:.3f}' if entry["error"] is not None else None,
+                    "dex",
+                )
+                for entry in published_parameters.get("metallicity", [])
+            ]
+            metallicity_estimates = []
+            if metallicity is not None:
+                metallicity_estimates.append(
                     (
                         "[Fe/H]",
-                        f'{entry["value"]:.3f}',
-                        entry["reference"],
-                        f'{entry["error"]:.3f}' if entry["error"] is not None else None,
+                        f"{metallicity['value']:.3f}",
+                        "Duque-Arribas et al. (2023)",
+                        f"{metallicity['error']:.3f}",
                         "dex",
                     )
-                    for entry in published_parameters.get("metallicity", [])
-                ]
-                if metallicity_rows:
-                    data_section("Published", metallicity_rows)
-                else:
-                    st.write("#### Published")
-                    st.caption("No published value is available from the connected sources.")
+                )
 
-                if metallicity is not None:
-                    data_section(
-                        "Estimated",
-                        [
-                            (
-                                "[Fe/H]",
-                                f"{metallicity['value']:.3f}",
-                                "Duque-Arribas et al. (2023)",
-                                f"{metallicity['error']:.3f}",
-                                "dex",
-                            )
-                        ],
+            first_left, first_right = st.columns(2, gap="small")
+            with first_left:
+                with st.container(border=True):
+                    st.subheader("Luminosity")
+                    parameter_section(
+                        "Published",
+                        luminosity_rows,
+                        "No published value is available.",
                     )
-                else:
-                    st.write("#### Estimated")
-                    if catalogue_records is None:
-                        st.info(
-                            "Run **Search photometric catalogues** in Photometry first. "
-                            "This estimate needs Gaia and AllWISE photometry."
+                    parameter_section(
+                        "Estimated",
+                        luminosity_estimates,
+                        "No estimate is available for the current inputs.",
+                    )
+
+            with first_right:
+                with st.container(border=True):
+                    st.subheader("Radius")
+                    parameter_section(
+                        "Published",
+                        radius_rows,
+                        "No published value is available.",
+                    )
+                    parameter_section(
+                        "Estimated",
+                        [],
+                        "No radius relation is currently implemented.",
+                    )
+
+            second_left, second_right = st.columns(2, gap="small")
+            with second_left:
+                with st.container(border=True):
+                    st.subheader("Mass")
+                    parameter_section(
+                        "Published",
+                        mass_rows,
+                        "No published value is available.",
+                    )
+                    mass_empty = "A published luminosity is required."
+                    if preferred_luminosity:
+                        mass_empty = "Outside the Eker et al. (2018) calibration."
+                    parameter_section("Estimated", mass_estimates, mass_empty)
+                    if eker_mass is not None:
+                        st.caption(
+                            f'Calibration: {eker_mass["minimum"]:.3f}–'
+                            f'{eker_mass["maximum"]:.2f} M☉. Input luminosity: '
+                            f'{preferred_luminosity["reference"]}.'
                         )
-                    else:
-                        st.warning(
-                            "The downloaded data do not contain all inputs required by "
-                            "the Duque-Arribas et al. (2023) relation."
-                        )
+
+            with second_right:
+                with st.container(border=True):
+                    st.subheader("Effective temperature")
+                    parameter_section(
+                        "Published",
+                        temperature_rows,
+                        "No published value is available.",
+                    )
+                    parameter_section(
+                        "Estimated",
+                        [],
+                        "No temperature relation is currently implemented.",
+                    )
+
+            with st.container(border=True):
+                st.subheader("Metallicity")
+                parameter_section(
+                    "Published",
+                    metallicity_rows,
+                    "No published value is available.",
+                )
+                metallicity_empty = (
+                    "Search photometric catalogues in Photometry first."
+                    if catalogue_records is None else
+                    "The downloaded data do not contain all required inputs."
+                )
+                parameter_section(
+                    "Estimated",
+                    metallicity_estimates,
+                    metallicity_empty,
+                )
 
     st.divider()
     st.caption(
