@@ -4,6 +4,7 @@ from math import isfinite, log, log10, sqrt
 
 
 LN10 = log(10.0)
+SOLAR_EFFECTIVE_TEMPERATURE = 5772.0
 
 
 # The coefficients and ranges are the empirical fits in Table 5.
@@ -193,6 +194,46 @@ def mass_from_luminosity_eker(luminosity, luminosity_error=None):
                 "maximum": maximum,
             }
     return None
+
+
+def radius_from_luminosity_temperature(
+    luminosity,
+    luminosity_error,
+    temperature,
+    temperature_error,
+):
+    """Estimate radius from luminosity and temperature with the SB law."""
+    try:
+        luminosity = float(luminosity)
+        temperature = float(temperature)
+    except (TypeError, ValueError):
+        return None
+    if not isfinite(luminosity) or not isfinite(temperature):
+        return None
+    if luminosity <= 0 or temperature <= 0:
+        return None
+
+    radius = sqrt(luminosity) * (
+        SOLAR_EFFECTIVE_TEMPERATURE / temperature
+    ) ** 2
+    relative_terms = []
+    try:
+        if luminosity_error is not None and float(luminosity_error) > 0:
+            relative_terms.append(
+                (0.5 * float(luminosity_error) / luminosity) ** 2
+            )
+    except (TypeError, ValueError):
+        pass
+    try:
+        if temperature_error is not None and float(temperature_error) > 0:
+            relative_terms.append(
+                (2.0 * float(temperature_error) / temperature) ** 2
+            )
+    except (TypeError, ValueError):
+        pass
+
+    error = radius * sqrt(sum(relative_terms)) if relative_terms else None
+    return {"value": radius, "error": error}
 
 
 def photometric_distance_from_gj(g_mag, g_error, j_mag, j_error):

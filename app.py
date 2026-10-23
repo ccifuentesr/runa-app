@@ -32,6 +32,7 @@ from parameters import (
     mass_from_luminosity_eker,
     metallicity_from_gaia_wise,
     photometric_distance_from_gj,
+    radius_from_luminosity_temperature,
 )
 from photometry import (
     build_sed_points,
@@ -45,7 +46,7 @@ from position_plots import polar_position_plot
 from predict_star import estimate_subtype
 from train_model import load_stars
 from vosa_input import build_vosa_input
-from cifuentes20 import load_table6
+from cifuentes20 import load_table6, temperature_from_spectral_type
 from local_volume import local_volume_status
 from published_parameters import published_stellar_parameters
 
@@ -1259,7 +1260,7 @@ elif tool == "Photometry":
                     g_mag = float(g_text)
                     j_mag = float(j_text)
                     ready = True
-                except ValueError:
+                except (TypeError, ValueError):
                     message = "Enter two numeric magnitudes."
             else:
                 message = "Enter two magnitudes and select **Estimate spectral type**."
@@ -1577,6 +1578,64 @@ elif tool == "Parameters":
         (entry for entry in published_luminosity if entry["reference"].endswith("(2025)")),
         published_luminosity[0] if published_luminosity else None,
     )
+    published_temperatures = published_parameters.get("effective_temperature", [])
+    preferred_temperature = (
+        published_temperatures[0] if published_temperatures else None
+    )
+
+    estimated_temperature = None
+    temperature_for_radius = preferred_temperature
+    if star is not None and temperature_for_radius is None:
+        spectral_type = str(star.get("sp_type") or "").strip()
+        spectral_type_origin = "published spectral type"
+        if spectral_type in ("", "~", "--"):
+            spectral_type = None
+            spectral_type_origin = "RUNA spectral-type estimate"
+            gaia = star.get("gaia_photometry", {})
+            twomass = star.get("twomass_photometry", {})
+            g_mag = gaia.get("phot_g_mean_mag")
+            j_mag = twomass.get("j_mag")
+            if g_mag is not None and j_mag is not None:
+                try:
+                    _, subtype = estimate_subtype(float(g_mag), float(j_mag))
+                    spectral_type = f"M{subtype:.1f}"
+                except ValueError:
+                    spectral_type = None
+
+        table_temperature = temperature_from_spectral_type(spectral_type)
+        if table_temperature is not None:
+            estimated_temperature = {
+                **table_temperature,
+                "origin": spectral_type_origin,
+                "reference": "Cifuentes et al. (2020), Table 6",
+            }
+            temperature_for_radius = estimated_temperature
+
+    radius_luminosity = preferred_luminosity
+    radius_luminosity_source = (
+        preferred_luminosity["reference"] if preferred_luminosity else None
+    )
+    if radius_luminosity is None and parameters is not None:
+        for band in ("M_J", "M_G"):
+            estimate = parameters["luminosities"].get(band)
+            if estimate is not None:
+                radius_luminosity = {
+                    "value": estimate["luminosity"],
+                    "error": estimate["luminosity_error"],
+                }
+                radius_luminosity_source = (
+                    f"Cifuentes et al. (2020), Table 5 · {band}"
+                )
+                break
+
+    estimated_radius = None
+    if radius_luminosity is not None and temperature_for_radius is not None:
+        estimated_radius = radius_from_luminosity_temperature(
+            radius_luminosity["value"],
+            radius_luminosity.get("error"),
+            temperature_for_radius["value"],
+            temperature_for_radius.get("error"),
+        )
     eker_mass = (
         mass_from_luminosity_eker(
             preferred_luminosity["value"], preferred_luminosity["error"]
@@ -1690,6 +1749,18 @@ elif tool == "Parameters":
                 )
                 for entry in published_parameters.get("radius", [])
             ]
+            radius_estimates = []
+            if estimated_radius is not None:
+                radius_estimates.append(
+                    (
+                        "From L and T_eff",
+                        f'{estimated_radius["value"]:.4f}',
+                        "Stefan–Boltzmann law",
+                        f'{estimated_radius["error"]:.4f}'
+                        if estimated_radius["error"] is not None else None,
+                        "R☉",
+                    )
+                )
             mass_rows = [
                 (
                     "Published value",
@@ -1720,8 +1791,24 @@ elif tool == "Parameters":
                     f'{entry["error"]:.0f}' if entry["error"] is not None else None,
                     "K",
                 )
-                for entry in published_parameters.get("effective_temperature", [])
+                for entry in published_temperatures
             ]
+            temperature_estimates = []
+            if estimated_temperature is not None:
+                temperature_label = (
+                    "From published SpT"
+                    if estimated_temperature["origin"] == "published spectral type"
+                    else "From RUNA SpT"
+                )
+                temperature_estimates.append(
+                    (
+                        f'{temperature_label} {estimated_temperature["spectral_type"]}',
+                        f'{estimated_temperature["value"]:.0f}',
+                        estimated_temperature["reference"],
+                        f'{estimated_temperature["error"]:.0f}',
+                        "K",
+                    )
+                )
             metallicity_rows = [
                 (
                     "[Fe/H]",
@@ -1769,9 +1856,21 @@ elif tool == "Parameters":
                     )
                     parameter_section(
                         "Estimated",
-                        [],
-                        "No radius relation is currently implemented.",
+                        radius_estimates,
+                        "A luminosity and effective temperature are required.",
                     )
+                    if estimated_radius is not None:
+                        temperature_source = temperature_for_radius["reference"]
+                        if estimated_temperature is not None:
+                            temperature_source += (
+                                f' · {estimated_temperature["origin"]}'
+                            )
+                        st.caption(
+                            f"Inputs: L — {radius_luminosity_source}; "
+                            f"T_eff — {temperature_source}. T☉ = 5772 K. "
+                            "The quoted error propagates the available input "
+                            "uncertainties."
+                        )
 
             second_left, second_right = st.columns(2, gap="small")
             with second_left:
@@ -1803,8 +1902,10 @@ elif tool == "Parameters":
                     )
                     parameter_section(
                         "Estimated",
-                        [],
-                        "No temperature relation is currently implemented.",
+                        temperature_estimates,
+                        "Published T_eff is used; no fallback estimate is needed."
+                        if preferred_temperature else
+                        "No tabulated temperature is available for this spectral type.",
                     )
 
             with st.container(border=True):
@@ -1829,8 +1930,10 @@ elif tool == "Parameters":
     st.caption(
         "Published values retain their individual source. Estimated values show the "
         "relation used. Absolute magnitudes use M = m + 5 log10(parallax) − 10, with "
-        "parallax in milliarcseconds. No radius or effective-temperature relation is "
-        "currently implemented."
+        "parallax in milliarcseconds. Radius uses the Stefan–Boltzmann law. If no "
+        "published T_eff is available, Cifuentes et al. (2020), Table 6 is used with "
+        "the published spectral type, or with the RUNA estimate when no published "
+        "spectral type exists."
     )
 
 elif tool == "Kinematics":
