@@ -1714,7 +1714,7 @@ elif tool == "Parameters":
                 "Gaia DR3 parallax."
             )
             if metallicity_inputs:
-                data_section("Metallicity inputs", metallicity_inputs)
+                parameter_section("Metallicity inputs", metallicity_inputs)
                 st.caption(
                     "M_G above and these Gaia/WISE magnitudes are used for "
                     "the photometric metallicity estimate."
