@@ -1,7 +1,7 @@
 <div align="center">
 
 <p align="center">
-  <img src="assets/runa-logo-tiwaz.png" alt="RUNA with the Tiwaz rune" width="620"/>
+  <img src="assets/runa-logo-dissolve.png" alt="RUNA" width="620"/>
 </p>
 
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
