@@ -36,43 +36,46 @@ def reference_cell(row, estimated=False):
 
 
 def stellar_parameter_table(groups):
-    """Show every available reference without implying paired measurements."""
-    rows = []
-    for name, unit, published, estimated in groups:
-        for index in range(max(len(published), len(estimated), 1)):
-            pub = published[index] if index < len(published) else None
-            est = estimated[index] if index < len(estimated) else None
-            group_class = ' class="parameter-group"' if index == 0 else ""
-            label = escape(name) if index == 0 else ""
-            unit_text = escape(unit) if index == 0 else ""
-            rows.append(
-                f'<tr{group_class}><th scope="row">{label}</th><td>{unit_text}</td>'
-                f'<td>{measurement_cell(pub)}</td><td>{reference_cell(pub)}</td>'
-                f'<td>{measurement_cell(est)}</td><td>{reference_cell(est, True)}</td></tr>'
-            )
+    """Show published values and estimates in two simple panels."""
     st.markdown(
         '<style>'
-        '.parameter-table-scroll {overflow-x:auto;}'
-        '.parameter-comparison {width:100%;border-collapse:collapse;color:#ededf0;}'
-        '.parameter-comparison th,.parameter-comparison td {padding:1rem .8rem;'
-        'text-align:left;vertical-align:top;border-bottom:1px solid #28282e;}'
-        '.parameter-comparison thead th {font-size:1.05rem;font-weight:650;'
-        'background:#19191e;color:#f3f3f5;}'
-        '.parameter-comparison tbody th {font-size:1rem;font-weight:600;min-width:8rem;}'
-        '.parameter-comparison td {font-size:.95rem;}'
-        '.parameter-comparison td:nth-child(4),.parameter-comparison td:nth-child(6) '
-        '{color:#a4a4ad;font-size:.85rem;min-width:10rem;}'
-        '.parameter-number {font-size:1.1rem;font-weight:600;white-space:nowrap;'
-        'font-variant-numeric:tabular-nums;}'
+        '.parameter-block {padding:.9rem 0;border-top:1px solid #303037;}'
+        '.parameter-name {font-size:1.05rem;font-weight:600;color:#d4d4d8;'
+        'margin-bottom:.55rem;}'
+        '.parameter-entry + .parameter-entry {margin-top:.8rem;}'
+        '.parameter-number {font-size:1.35rem;font-weight:600;color:#f3f3f5;'
+        'font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}'
         '.parameter-uncertainty {color:#92929d;font-weight:400;}'
-        '.parameter-method {color:#d4d4d8;}'
-        '.parameter-missing {color:#777782;}'
-        '.parameter-group th,.parameter-group td {border-top:2px solid #3a3a42;}'
-        '</style><div class="parameter-table-scroll">'
-        '<table class="parameter-comparison" aria-label="Stellar parameters">'
-        '<thead><tr><th scope="col">Parameter</th><th scope="col">Unit</th>'
-        '<th scope="col">Published</th><th scope="col">Source</th>'
-        '<th scope="col">Estimated</th><th scope="col">Method / source</th></tr></thead>'
-        '<tbody>' + "".join(rows) + '</tbody></table></div>',
+        '.parameter-unit {font-size:.9rem;color:#a4a4ad;margin-left:.5rem;}'
+        '.parameter-reference {font-size:.85rem;color:#92929d;margin-top:.15rem;}'
+        '.parameter-method {color:#c7c7cf;}'
+        '.parameter-missing {font-size:.9rem;color:#85858f;}'
+        '</style>',
         unsafe_allow_html=True,
     )
+    columns = st.columns(2, gap="small")
+    for column, title, row_index in zip(columns, ("Published", "Estimated"), (2, 3)):
+        with column:
+            with st.container(border=True):
+                st.subheader(title)
+                for group in groups:
+                    name, unit = group[:2]
+                    rows = group[row_index]
+                    entries = []
+                    for row in rows:
+                        entries.append(
+                            '<div class="parameter-entry">'
+                            f'{measurement_cell(row)}'
+                            f'<span class="parameter-unit">{escape(unit)}</span>'
+                            '<div class="parameter-reference">'
+                            f'{reference_cell(row, title == "Estimated")}</div></div>'
+                        )
+                    if not entries:
+                        message = "No published value" if title == "Published" else "No estimate available"
+                        entries.append(f'<div class="parameter-missing">{message}</div>')
+                    st.markdown(
+                        '<section class="parameter-block">'
+                        f'<div class="parameter-name">{escape(name)}</div>'
+                        + "".join(entries) + '</section>',
+                        unsafe_allow_html=True,
+                    )
