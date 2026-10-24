@@ -89,7 +89,7 @@ def polar_position_plot(star):
 
     rings = _reference_rings(distance, rmax)
     ax.set_rticks(rings)
-    ax.set_yticklabels([f"{_distance_label(radius)} pc" for radius in rings],
+    ax.set_yticklabels([f"{radius:.0f} pc" for radius in rings],
                        fontsize=10, color="#a1a1aa")
     ax.set_rlabel_position(22)
     ax.set_xticks(np.deg2rad(np.arange(0, 360, 60)))
