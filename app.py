@@ -27,6 +27,7 @@ from multiplicity import (
     query_rvs_reference,
     rvs_ruwe_plot,
 )
+from parameter_table import stellar_parameter_table
 from parameters import (
     calculate_parameters,
     mass_from_luminosity_eker,
@@ -927,10 +928,10 @@ if top_submitted:
 if search_error:
     st.error(search_error)
 
-if tool in ("Identification", "Data"):
+if tool in ("Identification", "Data", "Parameters"):
     input_card = None
     parameters_card = None
-    result_card = st.container(border=True) if tool == "Identification" else None
+    result_card = st.container(border=tool == "Identification") if tool != "Data" else None
 else:
     column_widths = [0.62, 1.38] if tool == "Parameters" else [1, 1]
     inputs, results = st.columns(column_widths, gap="small")
@@ -1688,35 +1689,6 @@ elif tool == "Parameters":
                     )
                 )
 
-    with input_card:
-        object_panel_title(star)
-        if star is None:
-            st.write("Load an object in **Identification** first.")
-        else:
-            magnitudes = [("M_G", parameters["M_G"]), ("M_J", parameters["M_J"])]
-            magnitude_columns = st.columns(2, gap="small")
-            for column, (label, magnitude) in zip(magnitude_columns, magnitudes):
-                with column:
-                    if magnitude is None:
-                        large_metric(label, "—", None)
-                    else:
-                        large_metric(
-                            label,
-                            f"{magnitude['value']:.3f} mag",
-                            f"{magnitude['error']:.3f} mag"
-                            if magnitude["error"] is not None else None,
-                        )
-            st.caption(
-                "Derived from Gaia DR3 and 2MASS photometry with positive "
-                "Gaia DR3 parallax."
-            )
-            if metallicity_inputs:
-                parameter_section("Metallicity inputs", metallicity_inputs)
-                st.caption(
-                    "M_G above and these Gaia/WISE magnitudes are used for "
-                    "the photometric metallicity estimate."
-                )
-
     with result_card:
         if star is None:
             st.info("Choose a star in **Identification** first.")
@@ -1858,121 +1830,24 @@ elif tool == "Parameters":
                     )
                 )
 
-            first_left, first_right = st.columns(2, gap="small")
-            with first_left:
-                with st.container(border=True):
-                    st.subheader("Luminosity")
-                    parameter_section(
-                        "Published",
-                        luminosity_rows,
-                        "No published value is available.",
-                    )
-                    parameter_section(
-                        "Estimated",
-                        luminosity_estimates,
-                        "No estimate is available for the current inputs.",
-                    )
-
-            with first_right:
-                with st.container(border=True):
-                    st.subheader("Radius")
-                    parameter_section(
-                        "Published",
-                        radius_rows,
-                        "No published value is available.",
-                    )
-                    parameter_section(
-                        "Estimated",
-                        radius_estimates,
-                        "A luminosity and effective temperature are required.",
-                    )
-                    if estimated_radius is not None:
-                        temperature_source = temperature_for_radius["reference"]
-                        if estimated_temperature is not None:
-                            temperature_source += (
-                                f' · {estimated_temperature["origin"]}'
-                            )
-                        st.caption(
-                            f"Inputs: L — {radius_luminosity_source}; "
-                            f"T_eff — {temperature_source}. T☉ = 5772 K. "
-                            "The quoted error propagates the available input "
-                            "uncertainties."
-                        )
-
-            second_left, second_right = st.columns(2, gap="small")
-            with second_left:
-                with st.container(border=True):
-                    st.subheader("Mass")
-                    parameter_section(
-                        "Published",
-                        mass_rows,
-                        "No published value is available.",
-                    )
-                    mass_empty = "A published luminosity is required."
-                    if preferred_luminosity:
-                        mass_empty = "Outside the Eker et al. (2018) calibration."
-                    parameter_section("Estimated", mass_estimates, mass_empty)
-                    if schweitzer_mass is not None:
-                        st.caption(
-                            f'Input radius: {mass_radius["value"]:.4f} R☉ · '
-                            f'{mass_radius_source}. Schweitzer+19 is intended for '
-                            "main-sequence M dwarfs older than a few hundred Myr; "
-                            "application outside that population is uncertain. "
-                            "Errors propagate the radius and coefficient errors, "
-                            "assuming independence; intrinsic scatter is not added."
-                        )
-                        if not schweitzer_mass["radius_error_available"]:
-                            st.caption("Radius uncertainty unavailable; the mass error includes coefficient errors only.")
-                    if eker_mass is not None:
-                        st.caption(
-                            f'Calibration: {eker_mass["minimum"]:.3f}–'
-                            f'{eker_mass["maximum"]:.2f} M☉. Input luminosity: '
-                            f'{preferred_luminosity["reference"]}.'
-                        )
-
-            with second_right:
-                with st.container(border=True):
-                    st.subheader("Effective temperature")
-                    parameter_section(
-                        "Published",
-                        temperature_rows,
-                        "No published value is available.",
-                    )
-                    parameter_section(
-                        "Estimated",
-                        temperature_estimates,
-                        "Published T_eff is used; no fallback estimate is needed."
-                        if preferred_temperature else
-                        "No tabulated temperature is available for this spectral type.",
-                    )
-
-            with st.container(border=True):
-                st.subheader("Metallicity")
-                parameter_section(
-                    "Published",
-                    metallicity_rows,
-                    "No published value is available.",
-                )
-                metallicity_empty = (
-                    "Search photometric catalogues in Photometry first."
-                    if catalogue_records is None else
-                    "The downloaded data do not contain all required inputs."
-                )
-                parameter_section(
-                    "Estimated",
-                    metallicity_estimates,
-                    metallicity_empty,
+            object_panel_title(star)
+            stellar_parameter_table([
+                ("Luminosity", "L☉", luminosity_rows, luminosity_estimates),
+                ("Mass", "M☉", mass_rows, mass_estimates),
+                ("Radius", "R☉", radius_rows, radius_estimates),
+                ("Effective temperature", "K", temperature_rows, temperature_estimates),
+                ("Metallicity", "dex", metallicity_rows, metallicity_estimates),
+            ])
+            if catalogue_records is None:
+                st.caption("For photometric metallicity, search catalogues in Photometry first.")
+            with st.expander("Calibration notes", expanded=False):
+                st.caption(
+                    "Schweitzer+19: main-sequence M dwarfs older than a few hundred Myr. "
+                    "Mass errors propagate radius and coefficient uncertainties; "
+                    "intrinsic scatter is not added. Eker+18: main-sequence "
+                    "mass–luminosity calibration; no extrapolation outside its intervals."
                 )
 
-    st.divider()
-    st.caption(
-        "Published values retain their individual source. Estimated values show the "
-        "relation used. Absolute magnitudes use M = m + 5 log10(parallax) − 10, with "
-        "parallax in milliarcseconds. Radius uses the Stefan–Boltzmann law. If no "
-        "published T_eff is available, Cifuentes et al. (2020), Table 6 is used with "
-        "the published spectral type, or with the RUNA estimate when no published "
-        "spectral type exists."
-    )
 
 elif tool == "Kinematics":
     banyan_error = None
