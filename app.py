@@ -875,6 +875,15 @@ with header_search:
     with search_button:
         top_submitted = st.button("RUN", use_container_width=True)
 
+st.markdown(
+    """
+    <div class="runa-tools" aria-label="RUNA project details">
+      <span>Python · Streamlit · Astropy · astroquery · scikit-learn · Matplotlib · ADQL/SQL</span>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 menu_col, data_col = st.columns([7, 0.85], gap="small")
 with menu_col:
     st.segmented_control(
@@ -914,15 +923,6 @@ if top_submitted:
             data["survey_image"] = fetch_survey_image(data["ra"], data["dec"])
             st.session_state["star"] = data
             st.rerun()
-
-st.markdown(
-    """
-    <div class="runa-tools" aria-label="RUNA project details">
-      <span>Python · Streamlit · Astropy · astroquery · scikit-learn · Matplotlib · ADQL/SQL</span>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
 
 if search_error:
     st.error(search_error)
