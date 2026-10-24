@@ -1,0 +1,8 @@
+{
+  "reference": "Schweitzer et al. (2019), Eq. 6",
+  "source_script": "stellar_params/stellar.compute_mass_radius.py",
+  "intercept": -0.024048024,
+  "slope": 1.0552427,
+  "intercept_error": 0.007592668,
+  "slope_error": 0.017044148
+}

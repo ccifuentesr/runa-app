@@ -1,6 +1,8 @@
 """Magnitude, luminosity, distance, and metallicity relations used by RUNA."""
 
 from math import isfinite, log, log10, sqrt
+import json
+from pathlib import Path
 
 
 LN10 = log(10.0)
@@ -194,6 +196,32 @@ def mass_from_luminosity_eker(luminosity, luminosity_error=None):
                 "maximum": maximum,
             }
     return None
+
+
+def mass_from_radius_schweitzer(radius, radius_error=None):
+    """Reuse the linear mass-radius relation and error propagation in stellar_params."""
+    try:
+        radius = float(radius)
+    except (TypeError, ValueError):
+        return None
+    if not isfinite(radius) or radius <= 0:
+        return None
+    path = Path(__file__).with_name("data") / "schweitzer19_mass_radius.json"
+    with path.open(encoding="utf-8") as source:
+        relation = json.load(source)
+    mass = relation["intercept"] + relation["slope"] * radius
+    if mass <= 0:
+        return None
+    variance = (relation["intercept_error"] ** 2
+                + (radius * relation["slope_error"]) ** 2)
+    if radius_error is not None:
+        radius_error = float(radius_error)
+        if not isfinite(radius_error) or radius_error < 0:
+            return None
+        variance += (relation["slope"] * radius_error) ** 2
+    return {"value": mass, "error": sqrt(variance),
+            "reference": relation["reference"],
+            "radius_error_available": radius_error is not None}
 
 
 def radius_from_luminosity_temperature(

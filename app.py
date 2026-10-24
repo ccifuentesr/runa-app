@@ -30,6 +30,7 @@ from multiplicity import (
 from parameters import (
     calculate_parameters,
     mass_from_luminosity_eker,
+    mass_from_radius_schweitzer,
     metallicity_from_gaia_wise,
     photometric_distance_from_gj,
     radius_from_luminosity_temperature,
@@ -1786,6 +1787,27 @@ elif tool == "Parameters":
                 for entry in published_parameters.get("mass", [])
             ]
             mass_estimates = []
+            published_radii = published_parameters.get("radius", [])
+            mass_radius = published_radii[0] if published_radii else estimated_radius
+            mass_radius_source = (
+                published_radii[0]["reference"] if published_radii
+                else "Stefan–Boltzmann estimate"
+            )
+            schweitzer_mass = (
+                mass_from_radius_schweitzer(
+                    mass_radius["value"], mass_radius.get("error")
+                ) if mass_radius is not None else None
+            )
+            if schweitzer_mass is not None:
+                mass_estimates.append(
+                    (
+                        "From radius",
+                        f'{schweitzer_mass["value"]:.4f}',
+                        schweitzer_mass["reference"],
+                        f'{schweitzer_mass["error"]:.4f}',
+                        "M☉",
+                    )
+                )
             if eker_mass is not None:
                 mass_estimates.append(
                     (
@@ -1899,6 +1921,17 @@ elif tool == "Parameters":
                     if preferred_luminosity:
                         mass_empty = "Outside the Eker et al. (2018) calibration."
                     parameter_section("Estimated", mass_estimates, mass_empty)
+                    if schweitzer_mass is not None:
+                        st.caption(
+                            f'Input radius: {mass_radius["value"]:.4f} R☉ · '
+                            f'{mass_radius_source}. Schweitzer+19 is intended for '
+                            "main-sequence M dwarfs older than a few hundred Myr; "
+                            "application outside that population is uncertain. "
+                            "Errors propagate the radius and coefficient errors, "
+                            "assuming independence; intrinsic scatter is not added."
+                        )
+                        if not schweitzer_mass["radius_error_available"]:
+                            st.caption("Radius uncertainty unavailable; the mass error includes coefficient errors only.")
                     if eker_mass is not None:
                         st.caption(
                             f'Calibration: {eker_mass["minimum"]:.3f}–'
