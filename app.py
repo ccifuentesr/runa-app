@@ -674,9 +674,6 @@ st.markdown(
     .runa-indicator-not-met .runa-indicator-observed {color: #73dfae;}
     .runa-indicator-unavailable {border-left: 3px solid #777780;}
     .runa-object-head {margin: 0;}
-    .runa-preparing {color: #f0aaa2; background: #2a191a; border: 1px solid #6a3638;
-                     border-radius: 10px; padding: .55rem .75rem; margin: 0 0 1rem;
-                     font-size: .88rem; font-weight: 560;}
     .runa-panel-object {color: #d4d4d8; font-size: 1.08rem; font-weight: 590;
                         margin: .05rem 0 1rem; letter-spacing: -.01em;}
     .runa-panel-object span {color: #81818b; font-size: .67rem; font-weight: 650;
@@ -867,7 +864,7 @@ with header_title:
         '<div class="runa-version">v20261022</div>',
         unsafe_allow_html=True,
     )
-    st.write("Explore stellar properties from measured data.")
+    st.write("For stellar characterisation · currently optimised for M dwarfs.")
 with header_search:
     search_name, search_button = st.columns([2.2, 0.75], gap="small")
     with search_name:
@@ -929,12 +926,6 @@ st.markdown(
 
 if search_error:
     st.error(search_error)
-
-if tool == "Parameters":
-    st.markdown(
-        '<div class="runa-preparing">Section in preparation · estimates may change.</div>',
-        unsafe_allow_html=True,
-    )
 
 if tool in ("Identification", "Data"):
     input_card = None
