@@ -69,6 +69,21 @@ def _matches(row, star, gaia_column):
     )
 
 
+def published_multiplicity(star):
+    """Return the published multiplicity description for a matched star."""
+    if not star:
+        return None
+    for row in _catalogue_rows("cifuentes25_dataset.csv"):
+        if _matches(row, star, "GaiaDR3"):
+            return {
+                "type": row.get("Type", "").strip(),
+                "sb": row.get("SB", "").strip(),
+                "candidate": row.get("Candidate", "").strip() == "T",
+                "reference": "Cifuentes et al. (2025)",
+            }
+    return None
+
+
 def published_stellar_parameters(star):
     """Return matching published values grouped by stellar parameter."""
     if not star:

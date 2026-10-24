@@ -50,7 +50,7 @@ from train_model import load_stars
 from vosa_input import build_vosa_input
 from cifuentes20 import load_table6, temperature_from_spectral_type
 from local_volume import local_volume_status
-from published_parameters import published_stellar_parameters
+from published_parameters import published_stellar_parameters, published_multiplicity
 
 
 def data_row(label, value, source=None, error=None, unit=None):
@@ -935,7 +935,7 @@ if tool in ("Identification", "Data", "Parameters"):
 else:
     column_widths = [0.62, 1.38] if tool == "Parameters" else [1, 1]
     inputs, results = st.columns(column_widths, gap="small")
-    input_card = inputs.container(border=True)
+    input_card = inputs.container(border=True, height=160) if tool == "Multiplicity" else inputs.container(border=True)
     parameters_card = inputs.container(border=True) if tool == "Multiplicity" else None
     spectral_type_card = (
         inputs.container(border=True) if tool == "Photometry" else None
@@ -943,6 +943,7 @@ else:
     additional_catalogue_card = (
         inputs.container(border=True) if tool == "Photometry" else None
     )
+    classification_card = results.container(border=True, height=160) if tool == "Multiplicity" else None
     result_card = results.container(
         border=tool not in ("Photometry", "Parameters")
     )
@@ -2066,6 +2067,34 @@ elif tool == "Multiplicity":
             query_error = str(error)
         except Exception:
             query_error = "The Gaia query failed. Please try again later."
+
+    with classification_card:
+        catalogue_multiplicity = published_multiplicity(star)
+        if star is None:
+            st.subheader("Multiplicity")
+            st.caption("Load an object in Identification first.")
+        elif catalogue_multiplicity and catalogue_multiplicity["type"].startswith("Multiple"):
+            st.subheader("Known multiple")
+            sb = catalogue_multiplicity["sb"]
+            st.caption(
+                f"Spectroscopic classification: {sb}." if sb
+                else "No spectroscopic-binary classification reported."
+            )
+            st.caption(catalogue_multiplicity["reference"])
+        elif (answer and any(answer[1][number] for number in (1, 2, 3, 4, 5, 7))) or (
+            catalogue_multiplicity and catalogue_multiplicity["candidate"]
+        ):
+            st.subheader("Candidate")
+            st.caption("Multiplicity candidate based on Gaia DR3 indicators.")
+        elif answer is not None and any(value is not None for value in answer[1].values()):
+            st.subheader("Single")
+            st.caption(
+                "No strong Gaia DR3 indicator detected. Without spectroscopic "
+                "analysis, an unresolved binary remains possible."
+            )
+        else:
+            st.subheader("Not assessed")
+            st.caption("Insufficient Gaia DR3 data to assess multiplicity.")
 
     with input_card:
         object_panel_title(star)
