@@ -11,7 +11,6 @@ import numpy as np
 
 MAS_PER_RAD = 206264806.0
 TAIL_YEARS = 1.0e5
-REFERENCE_RINGS = (1, 2, 3, 5, 10, 20, 50)
 
 
 def _proper_motion_endpoint(star, alpha, distance):
@@ -45,7 +44,24 @@ def _polar_limit(distance):
         return 30.0
     if distance <= 50:
         return 50.0
-    return 1.2 * distance
+    step = 0.5 * 10 ** np.floor(np.log10(distance))
+    return float(np.ceil(1.1 * distance / step) * step)
+
+
+def _reference_rings(distance, maximum):
+    """Keep a few round reference distances, separated from the target ring."""
+    candidates = []
+    for fraction in (1 / 10, 1 / 3, 2 / 3):
+        value = maximum * fraction
+        scale = 10 ** np.floor(np.log10(value))
+        rounded = min((1, 2, 3, 5, 10), key=lambda n: abs(n * scale - value)) * scale
+        if abs(rounded - distance) >= 0.12 * maximum:
+            candidates.append(float(rounded))
+    return sorted(set([*candidates, maximum]))
+
+
+def _distance_label(distance):
+    return f"{distance:.3f}".rstrip("0").rstrip(".")
 
 
 def polar_position_plot(star):
@@ -58,6 +74,8 @@ def polar_position_plot(star):
         return None
 
     distance = float(star["distance_pc"])
+    if not np.isfinite(distance) or distance <= 0:
+        return None
     alpha = np.deg2rad(float(star["ra"]))
     rmax = _polar_limit(distance)
 
@@ -69,9 +87,9 @@ def polar_position_plot(star):
     ax.set_theta_direction(1)
     ax.set_rlim(0, rmax)
 
-    rings = [radius for radius in REFERENCE_RINGS if radius <= rmax]
+    rings = _reference_rings(distance, rmax)
     ax.set_rticks(rings)
-    ax.set_yticklabels([f"{radius} pc" for radius in rings],
+    ax.set_yticklabels([f"{_distance_label(radius)} pc" for radius in rings],
                        fontsize=10, color="#a1a1aa")
     ax.set_rlabel_position(22)
     ax.set_xticks(np.deg2rad(np.arange(0, 360, 60)))
@@ -85,6 +103,15 @@ def polar_position_plot(star):
     ax.spines["polar"].set_linewidth(0.8)
     ax.spines["polar"].set_linestyle((0, (4, 3)))
     ax.spines["polar"].set_alpha(0.7)
+
+    # Place the exact-distance label opposite the reference labels.
+    angles = np.linspace(0, 2 * np.pi, 360)
+    ax.plot(angles, np.full_like(angles, distance), color="#6ee7b7",
+            lw=1.1, ls=(0, (4, 3)), alpha=0.85, zorder=2)
+    ax.text(np.deg2rad(202), distance,
+            f"{_distance_label(distance)} pc", color="#6ee7b7", fontsize=11,
+            ha="right", va="center",
+            bbox={"facecolor": "#151518", "edgecolor": "none", "pad": 2})
 
     tail = _proper_motion_endpoint(star, alpha, distance)
     if tail is not None:
