@@ -31,7 +31,7 @@ def reference_cell(row, estimated=False):
         label = escape(str(row[0]))
         label = label.replace("M_G", "M<sub>G</sub>").replace("M_J", "M<sub>J</sub>")
         label = label.replace("T_eff", "T<sub>eff</sub>")
-        return f'<span class="parameter-method">{label}</span><br>{reference}'
+        return f'<span class="parameter-method">{label}</span> · {reference}'
     return reference
 
 
@@ -42,12 +42,17 @@ def stellar_parameter_table(groups):
         '.parameter-block {padding:.9rem 0;border-top:1px solid #303037;}'
         '.parameter-name {font-size:1.05rem;font-weight:600;color:#d4d4d8;'
         'margin-bottom:.55rem;}'
+        '.parameter-entry {display:flex;align-items:baseline;justify-content:space-between;'
+        'gap:1rem;flex-wrap:wrap;}'
+        '.parameter-measurement {flex:0 1 auto;}'
         '.parameter-entry + .parameter-entry {margin-top:.8rem;}'
         '.parameter-number {font-size:1.35rem;font-weight:600;color:#f3f3f5;'
         'font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}'
         '.parameter-uncertainty {color:#92929d;font-weight:400;}'
-        '.parameter-unit {font-size:.9rem;color:#a4a4ad;margin-left:.5rem;}'
-        '.parameter-reference {font-size:.85rem;color:#92929d;margin-top:.15rem;}'
+        '.parameter-unit {font-size:1.1rem;color:#a4a4ad;margin-left:.5rem;white-space:nowrap;}'
+        '.parameter-unit sub {font-size:.75em;}'
+        '.parameter-reference {font-size:.85rem;color:#92929d;text-align:right;'
+        'flex:1 1 12rem;margin-left:auto;}'
         '.parameter-method {color:#c7c7cf;}'
         '.parameter-missing {font-size:.9rem;color:#85858f;}'
         '</style>',
@@ -60,13 +65,17 @@ def stellar_parameter_table(groups):
                 st.subheader(title)
                 for group in groups:
                     name, unit = group[:2]
+                    unit_html = escape(unit)
+                    if unit in ("L☉", "R☉", "M☉"):
+                        unit_html = f'{unit[0]}<sub>☉</sub>'
                     rows = group[row_index]
                     entries = []
                     for row in rows:
                         entries.append(
                             '<div class="parameter-entry">'
+                            '<div class="parameter-measurement">'
                             f'{measurement_cell(row)}'
-                            f'<span class="parameter-unit">{escape(unit)}</span>'
+                            f'<span class="parameter-unit">{unit_html}</span></div>'
                             '<div class="parameter-reference">'
                             f'{reference_cell(row, title == "Estimated")}</div></div>'
                         )
