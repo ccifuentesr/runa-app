@@ -61,7 +61,7 @@ def _reference_rings(distance, maximum):
 
 
 def _distance_label(distance):
-    return f"{distance:.3f}".rstrip("0").rstrip(".")
+    return f"{distance:.1f}"
 
 
 def polar_position_plot(star):
