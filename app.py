@@ -61,10 +61,21 @@ def data_row(label, value, source=None, error=None, unit=None):
     label_html = label_html.replace("M_J", "M<sub>J</sub>")
     label_html = label_html.replace("T_eff", "T<sub>eff</sub>")
     error_html = (
-        f'<span class="runa-error">({escape(error)})</span>' if error else ""
+        f'<span class="runa-error">({escape(error)})</span>'
+        if error and error != "photometric_warning" else ""
     )
     unit_html = escape(unit) if unit else ""
-    source_html = escape(source) if source else ""
+    if source == "Cifuentes+20" and error == "photometric_warning":
+        source_html = (
+            '<span class="runa-data-source-reference">Cifuentes+20</span>'
+            '<span class="runa-warning-badge" title="Photometric distance only. '
+            'The M_G–(G−J) relation is calibrated for solar-metallicity stars '
+            'with good photometry and negligible extinction. Cifuentes et al. '
+            '(2020) report a median distance accuracy of 36%. Use a '
+            'trigonometric parallax when available.">Warning</span>'
+        )
+    else:
+        source_html = escape(source) if source else ""
     row_class = "runa-data-row" if unit else "runa-data-row runa-data-row-no-unit"
     return (
         f'<div class="{row_class}">'
@@ -684,6 +695,10 @@ st.markdown(
     .runa-version {color: #a1a1aa; font-size: .9rem; margin: .42rem 0 1.1rem;}
     .runa-tools {border-bottom: 1px solid #27272a; margin: 1.1rem 0 2rem; padding-bottom: .75rem;}
     .runa-tools span {font-size: 1.02rem; color: #92929d;}
+    .stMarkdown a, .stCaption a {color: inherit !important;
+                                 text-decoration-color: #60606a;
+                                 text-underline-offset: .16em;}
+    .stMarkdown a:hover, .stCaption a:hover {color: #f4f4f5 !important;}
     .st-key-runa_main_nav button {border-radius: 0; height: 2.25rem; min-height: 2.25rem;}
     .st-key-runa_main_nav * {border-radius: 0 !important;}
     .st-key-runa_data_button button,
@@ -691,6 +706,14 @@ st.markdown(
         height: 2.25rem; min-height: 2.25rem; border-radius: 12px;
     }
     .runa-note {color: #a1a1aa; font-size: .9rem;}
+    .runa-filter-reference {color: #a1a1aa; font-size: .875rem;
+                            line-height: 1.4; margin: 0 0 .65rem;}
+    .runa-data-source-reference {display: block;}
+    .runa-warning-badge {display: inline-flex; align-items: center; margin-top: .24rem;
+                         padding: .1rem .4rem; border: 1px solid #a68232;
+                         border-radius: 999px; color: #f4cf75; background: #2b2518;
+                         font-size: .68rem; font-weight: 680; letter-spacing: .02em;
+                         cursor: help;}
     .runa-volume {border: 1px solid #303037; border-radius: 12px; background: #19191e;
                   padding: .8rem 1rem; margin: .65rem 0 .9rem;}
     .runa-volume-title {color: #f4f4f5; font-size: 1rem; font-weight: 650;
@@ -1511,25 +1534,17 @@ elif tool == "Photometry":
 
     with additional_catalogue_card:
         st.subheader("Additional catalogue photometry")
-        st.caption(
-            "Searches prefer exact SIMBAD catalogue identifiers. "
-            "Gaia DR3 values come from the loaded source."
-        )
         if star is None:
             st.write("Choose a star in **Identification** first.")
         else:
-            sort_by_wavelength = st.checkbox(
-                "Sort bands by effective wavelength",
-                value=False,
-                key="sort_catalogue_photometry",
-            )
-            show_sed_bands = st.checkbox(
-                "Show photometric bands in the SED",
-                value=False,
-                key="show_sed_bands",
-            )
-            st.caption(
-                "Effective wavelengths follow Cifuentes et al. (2020), Table 1."
+            st.markdown(
+                '<p class="runa-filter-reference">The '
+                '<a href="https://svo2.cab.inta-csic.es/theory/fps/" '
+                'target="_blank">Carlos Rodrigo Filter Profile Service</a> '
+                '(<a href="https://ui.adsabs.harvard.edu/abs/2020sea..confE.182R/abstract" '
+                'target="_blank">Rodrigo et al. 2020</a>) is the reference for '
+                'the filter profiles used here.</p>',
+                unsafe_allow_html=True,
             )
             if st.button(
                 "Search photometric catalogues",
@@ -1559,6 +1574,11 @@ elif tool == "Photometry":
                         "Bands without a VOSA zero point are left out."
                     )
                 else:
+                    show_sed_bands = st.checkbox(
+                        "Show photometric bands in the SED",
+                        value=False,
+                        key="show_sed_bands",
+                    )
                     sed_fig = sed_figure(
                         sed_points,
                         star["main_id"] if star is not None else "Loaded object",
@@ -1575,6 +1595,11 @@ elif tool == "Photometry":
                         "points are ordered by effective wavelength. This is the "
                         "observed SED prepared for a future VOSA fit."
                     )
+                sort_by_wavelength = st.checkbox(
+                    "Sort bands by effective wavelength",
+                    value=False,
+                    key="sort_catalogue_photometry",
+                )
                 catalogue_photometry_table(
                     catalogue_records,
                     sort_by_wavelength=sort_by_wavelength,
@@ -1584,40 +1609,40 @@ elif tool == "Photometry":
                     "optical, near-IR and mid-IR. Missing bands remain unavailable."
                 )
 
-                st.write("#### VOSA")
-                st.caption(
-                    "APASS is included in the export. SkyMapper filter mappings "
-                    "are pending verification and are not exported yet."
-                )
                 vosa_file = build_vosa_input(star, catalogue_records)
-                vosa_column, link_column = st.columns(2, gap="small")
-                with link_column:
-                    st.link_button(
-                        "Open VOSA ↗",
-                        "https://svo2.cab.inta-csic.es/theory/vosa/",
+                if vosa_file is None:
+                    st.button(
+                        "↓ Download VOSA input",
+                        disabled=True,
+                        use_container_width=True,
+                        key="download_vosa_input_disabled",
+                    )
+                else:
+                    st.download_button(
+                        "↓ Download VOSA input",
+                        data=vosa_file["content"],
+                        file_name=vosa_file["filename"],
+                        mime="text/plain",
                         use_container_width=True,
                     )
+
+                st.write("#### VOSA")
+                st.caption(
+                    "VOSA (VO SED Analyzer) builds and analyses spectral energy "
+                    "distributions, compares them with stellar models and can "
+                    "estimate physical properties such as bolometric luminosity."
+                )
+                st.link_button(
+                    "Open VOSA ↗",
+                    "https://svo2.cab.inta-csic.es/theory/vosa/",
+                    use_container_width=True,
+                )
                 if vosa_file is None:
-                    with vosa_column:
-                        st.button(
-                            "Download VOSA input",
-                            disabled=True,
-                            use_container_width=True,
-                            key="download_vosa_input_disabled",
-                        )
                     st.info(
                         "A positive Gaia parallax and at least one mapped band with "
                         "an uncertainty are needed to create a VOSA input file."
                     )
                 else:
-                    with vosa_column:
-                        st.download_button(
-                            "Download VOSA input",
-                            data=vosa_file["content"],
-                            file_name=vosa_file["filename"],
-                            mime="text/plain",
-                            use_container_width=True,
-                        )
                     distance_text = f"{vosa_file['distance']:.3f} pc"
                     if vosa_file["distance_error"] is not None:
                         distance_text += f" ({vosa_file['distance_error']:.3f} pc)"
@@ -1698,7 +1723,7 @@ elif tool == "Photometry":
                                 "Distance",
                                 f"{photometric_distance['distance_pc']:.1f}",
                                 "Cifuentes+20",
-                                "36% typical",
+                                "photometric_warning",
                                 "pc",
                             ),
                             (
@@ -1717,12 +1742,6 @@ elif tool == "Photometry":
                                 "mag",
                             ),
                         ],
-                    )
-                    st.warning(
-                        "Approximate photometric distance. The Cifuentes et al. (2020) "
-                        "relation is intended for solar-metallicity stars with good "
-                        "photometry; its typical accuracy is about 36%. Use a trigonometric "
-                        "parallax when available. Extinction is assumed negligible."
                     )
 
 

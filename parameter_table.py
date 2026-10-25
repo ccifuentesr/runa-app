@@ -46,7 +46,7 @@ def estimate_source(label):
     if "M_J" in text:
         return "M_J"
     if "manual L and T_eff" in text or "L and T_eff" in text:
-        return "L, T_eff"
+        return "L + T_eff"
     if "manual radius" in text or "radius" in text.lower():
         return "R"
     if "luminosity" in text.lower():
@@ -54,7 +54,7 @@ def estimate_source(label):
     if "SpT" in text:
         return "SpT"
     if text == "[Fe/H]":
-        return "G, BP, RP, W1, W2, parallax"
+        return "G / BP / RP / W1 / W2 / parallax"
     return text.removeprefix("From ")
 
 
@@ -84,6 +84,7 @@ def estimated_parameters_csv(groups):
     writer = csv.DictWriter(
         output,
         fieldnames=("parameter", "value", "error", "unit", "source", "reference"),
+        delimiter=";",
         lineterminator="\n",
     )
     writer.writeheader()

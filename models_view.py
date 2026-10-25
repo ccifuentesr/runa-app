@@ -181,7 +181,7 @@ def show_models():
                 rows.append({"Range": label, "Test stars": int(mask.sum()),
                              "MAE": float(np.abs(residual[mask]).mean())})
             report_table(pd.DataFrame(rows), {"MAE": "{:.3f}".format})
-            st.download_button("Download test predictions", predictions.to_csv(index=False),
+            st.download_button("Download test predictions", predictions.to_csv(index=False, sep=";"),
                                file_name="runa_spectral_predictions.csv", mime="text/csv")
     st.caption(
         "Scope: ordinary M dwarfs. Sparse spectral bins and uncertain reference labels "
