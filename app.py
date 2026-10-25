@@ -27,7 +27,8 @@ from multiplicity import (
     query_rvs_reference,
     rvs_ruwe_plot,
 )
-from parameter_table import stellar_parameter_table
+from parameter_table import stellar_parameter_table, panel_heading
+from survey_view import survey_image_view
 from parameters import (
     calculate_parameters,
     mass_from_luminosity_eker,
@@ -46,9 +47,10 @@ from photometry import (
 from planets import lookup_planets
 from position_plots import polar_position_plot
 from predict_star import estimate_subtype
+from models_view import show_models
 from train_model import load_stars
 from vosa_input import build_vosa_input
-from cifuentes20 import load_table6, temperature_from_spectral_type
+from cifuentes20 import load_reference_data, temperature_from_spectral_type
 from local_volume import local_volume_status
 from published_parameters import published_stellar_parameters, published_multiplicity
 
@@ -63,8 +65,9 @@ def data_row(label, value, source=None, error=None, unit=None):
     )
     unit_html = escape(unit) if unit else ""
     source_html = escape(source) if source else ""
+    row_class = "runa-data-row" if unit else "runa-data-row runa-data-row-no-unit"
     return (
-        '<div class="runa-data-row">'
+        f'<div class="{row_class}">'
         f'<span class="runa-data-label">{label_html}</span>'
         '<span class="runa-data-value">'
         f'{escape(str(value))}{error_html}</span>'
@@ -73,14 +76,17 @@ def data_row(label, value, source=None, error=None, unit=None):
     )
 
 
-def data_section(title, rows):
+def data_section(title, rows, class_name=""):
     """Show a titled group of identification values."""
     content = "".join(data_row(*row) for row in rows if row[1] is not None)
     if content:
         title_html = escape(str(title)).replace("M_G", "M<sub>G</sub>")
         title_html = title_html.replace("M_J", "M<sub>J</sub>")
+        section_classes = "runa-data-section"
+        if class_name:
+            section_classes += f" {class_name}"
         st.markdown(
-            f'<section class="runa-data-section"><div class="runa-section-title">'
+            f'<section class="{section_classes}"><div class="runa-section-title">'
             f'{title_html}</div>{content}</section>',
             unsafe_allow_html=True,
         )
@@ -127,31 +133,73 @@ def parameter_section(title, rows, empty_message=None):
 
 
 def cifuentes20_table(rows):
-    """Render Cifuentes et al. (2020), Table 6 in RUNA's data-table style."""
+    """Render Cifuentes et al. (2020), Tables 6 and 7 as one table."""
+    magnitude_columns = (
+        ("mb", "mb_error", "M<sub>B</sub>"),
+        ("mg_prime", "mg_prime_error", "M<sub>g′</sub>"),
+        ("mgbp", "mgbp_error", "M<sub>G<span>BP</span></sub>"),
+        ("mv", "mv_error", "M<sub>V</sub>"),
+        ("mr_prime", "mr_prime_error", "M<sub>r′</sub>"),
+        ("mg", "mg_error", "M<sub>G</sub>"),
+        ("mi_prime", "mi_prime_error", "M<sub>i′</sub>"),
+        ("mgrp", "mgrp_error", "M<sub>G<span>RP</span></sub>"),
+        ("mj", "mj_error", "M<sub>J</sub>"),
+        ("mh", "mh_error", "M<sub>H</sub>"),
+        ("mks", "mks_error", "M<sub>K<span>s</span></sub>"),
+        ("mw1", "mw1_error", "M<sub>W1</sub>"),
+        ("mw2", "mw2_error", "M<sub>W2</sub>"),
+        ("mw3", "mw3_error", "M<sub>W3</sub>"),
+    )
+
+    def measurement_cell(row, value_key, error_key):
+        value = row.get(value_key)
+        if value in (None, ""):
+            return '<td class="runa-cifuentes-missing">—</td>'
+        error = row.get(error_key)
+        error_html = (
+            f' <span class="runa-cifuentes-error">({escape(str(error))})</span>'
+            if error not in (None, "") else ""
+        )
+        return f'<td>{escape(str(value))}{error_html}</td>'
+
+    magnitude_headers = "".join(
+        f'<th class="runa-cifuentes-band">{label}<small>mag</small></th>'
+        for _, _, label in magnitude_columns
+    )
     header = (
-        '<section class="runa-cifuentes-table">'
-        '<div class="runa-cifuentes-row runa-cifuentes-head">'
-        '<span>Spectral type</span><span>BC<sub>G</sub><small>mag</small></span>'
-        '<span>BC<sub>J</sub><small>mag</small></span>'
-        '<span>L<small>10<sup>−4</sup> L<sub>☉</sub></small></span>'
-        '<span>T<sub>eff</sub><small>K</small></span><span>R<small>R<sub>☉</sub></small></span>'
-        '<span>M<small>M<sub>☉</sub></small></span><span>N</span></div>'
+        '<div class="runa-cifuentes-scroll"><table class="runa-cifuentes-table">'
+        '<thead><tr>'
+        '<th class="runa-cifuentes-type">Spectral type</th>'
+        '<th>Luminosity<small>10<sup>−4</sup> L<sub>sol</sub></small></th>'
+        '<th>T<sub>eff</sub><small>K</small></th>'
+        '<th>Radius<small>R<sub>sol</sub></small></th>'
+        '<th>Mass<small>M<sub>sol</sub></small></th>'
+        f'{magnitude_headers}'
+        '<th>BC<sub>G</sub><small>mag</small></th>'
+        '<th>BC<sub>J</sub><small>mag</small></th>'
+        '<th>N</th></tr></thead><tbody>'
     )
     body = []
     for row in rows:
-        value = lambda name: escape(row[name])
-        pair = lambda name, error: (
-            f'<span>{value(name)} <small>({value(error)})</small></span>'
+        cells = [
+            f'<td class="runa-cifuentes-type">{escape(str(row["sp_type"]))}</td>',
+            measurement_cell(row, "lbol", "lbol_error"),
+            measurement_cell(row, "teff", "teff_error"),
+            measurement_cell(row, "radius", "radius_error"),
+            measurement_cell(row, "mass", "mass_error"),
+        ]
+        cells.extend(
+            measurement_cell(row, value_key, error_key)
+            for value_key, error_key, _ in magnitude_columns
         )
-        body.append(
-            '<div class="runa-cifuentes-row">'
-            f'<span class="runa-cifuentes-type">{value("sp_type")}</span>'
-            f'{pair("bc_g", "bc_g_error")}{pair("bc_j", "bc_j_error")}'
-            f'{pair("lbol", "lbol_error")}{pair("teff", "teff_error")}'
-            f'{pair("radius", "radius_error")}{pair("mass", "mass_error")}'
-            f'<span>{value("n")}</span></div>'
-        )
-    st.markdown(header + "".join(body) + "</section>", unsafe_allow_html=True)
+        cells.extend((
+            measurement_cell(row, "bc_g", "bc_g_error"),
+            measurement_cell(row, "bc_j", "bc_j_error"),
+            f'<td>{escape(str(row["n"]))}</td>',
+        ))
+        body.append(f'<tr>{"".join(cells)}</tr>')
+    html = header + "".join(body) + '</tbody></table></div>'
+    st.markdown(html, unsafe_allow_html=True)
 
 
 def catalogue_photometry_table(records, sort_by_wavelength=False):
@@ -539,11 +587,32 @@ def sexagesimal(value, right_ascension=False):
 
 
 
-def magnitude_value(value):
-    """Format an apparent magnitude for a compact metric."""
+def photometry_summary_metric(label, value, error=None):
+    """Show a photometric value with secondary uncertainty and unit styling."""
+    label_html = (
+        escape(str(label))
+        .replace("M_G", "M<sub>G</sub>")
+        .replace("M_J", "M<sub>J</sub>")
+    )
     if value is None or np.ma.is_masked(value):
-        return "—"
-    return f"{float(value):.3f} mag"
+        value_html = '<span class="runa-summary-value">—</span>'
+        error_html = ""
+        unit_html = ""
+    else:
+        value_html = f'<span class="runa-summary-value">{float(value):.3f}</span>'
+        error_html = (
+            f'<span class="runa-summary-error">({float(error):.3f})</span>'
+            if error is not None and not np.ma.is_masked(error)
+            else ""
+        )
+        unit_html = '<span class="runa-summary-unit">mag</span>'
+    st.markdown(
+        '<div class="runa-summary-metric">'
+        f'<div class="runa-summary-label">{label_html}</div>'
+        f'<div>{value_html}{error_html}{unit_html}</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
 def object_panel_title(star):
     """Show the selected object without making it compete with section titles."""
@@ -615,6 +684,12 @@ st.markdown(
     .runa-version {color: #a1a1aa; font-size: .9rem; margin: .42rem 0 1.1rem;}
     .runa-tools {border-bottom: 1px solid #27272a; margin: 1.1rem 0 2rem; padding-bottom: .75rem;}
     .runa-tools span {font-size: 1.02rem; color: #92929d;}
+    .st-key-runa_main_nav button {border-radius: 0; height: 2.25rem; min-height: 2.25rem;}
+    .st-key-runa_main_nav * {border-radius: 0 !important;}
+    .st-key-runa_data_button button,
+    .st-key-runa_models_button button {
+        height: 2.25rem; min-height: 2.25rem; border-radius: 12px;
+    }
     .runa-note {color: #a1a1aa; font-size: .9rem;}
     .runa-volume {border: 1px solid #303037; border-radius: 12px; background: #19191e;
                   padding: .8rem 1rem; margin: .65rem 0 .9rem;}
@@ -635,6 +710,15 @@ st.markdown(
     .runa-large-metric-value {color: #f4f4f5; font-size: 1.7rem; font-weight: 620;
                               line-height: 1.18;}
     .runa-large-metric-error {color: #92929d; font-size: .82rem; margin-top: .22rem;}
+    .runa-summary-metric {padding: .15rem 0 .75rem;}
+    .runa-summary-label {color: #a1a1aa; font-size: .82rem; margin-bottom: .18rem;}
+    .runa-summary-label sub {font-size: .72em; vertical-align: sub;}
+    .runa-summary-value {color: #f4f4f5; font-size: 1.65rem; font-weight: 620;
+                         line-height: 1.15; font-variant-numeric: tabular-nums;}
+    .runa-summary-error {color: #92929d; font-size: .82rem; font-weight: 430;
+                         margin-left: .3rem; font-variant-numeric: tabular-nums;}
+    .runa-summary-unit {color: #92929d; font-size: .78rem; font-weight: 430;
+                        margin-left: .32rem;}
     div[data-testid="stVerticalBlockBorderWrapper"] {
         border-radius: 18px;
         border-color: #303036;
@@ -677,6 +761,9 @@ st.markdown(
     .runa-object-head {margin: 0;}
     .runa-panel-object {color: #d4d4d8; font-size: 1.08rem; font-weight: 590;
                         margin: .05rem 0 1rem; letter-spacing: -.01em;}
+    .runa-panel-heading {color: #81818b; font-size: .82rem; font-weight: 650;
+                         letter-spacing: .08em; text-transform: uppercase;
+                         margin: .05rem 0 .65rem;}
     .runa-panel-object span {color: #81818b; font-size: .67rem; font-weight: 650;
                              letter-spacing: .08em; text-transform: uppercase;
                              margin-right: .5rem;}
@@ -715,6 +802,24 @@ st.markdown(
                      white-space: nowrap;}
     .runa-data-source {color: #777782; font-size: .72rem; text-align: right;
                        white-space: nowrap; padding-top: .08rem; justify-self: end;}
+    .runa-identification-data .runa-section-title {color: #72727c; font-size: .79rem;
+                         padding-top: .82rem; padding-bottom: .62rem;}
+    .runa-identification-column-marker {display:none;}
+    .runa-identification-data .runa-data-row {
+        grid-template-columns: minmax(7.4rem, .75fr) minmax(0, 1.5fr)
+                               minmax(3rem, .38fr) minmax(5.3rem, .78fr);
+        gap: .6rem;
+    }
+    .runa-identification-data .runa-data-row-no-unit {
+        grid-template-columns: minmax(7.4rem, .75fr) minmax(0, 1.65fr)
+                               minmax(5.3rem, .78fr);
+    }
+    .runa-identification-data .runa-data-row-no-unit .runa-data-unit {display:none;}
+    .runa-identification-data .runa-data-label {font-size: 1.04rem;}
+    .runa-identification-data .runa-data-value {font-size: 1rem;}
+    .runa-identification-data .runa-error {font-size: 1rem;}
+    .runa-identification-data .runa-data-unit {font-size: .9rem;}
+    .runa-identification-data .runa-data-source {font-size: .8rem;}
     .runa-parameter-section {overflow: hidden; border: 1px solid #2d2d33;
                              border-radius: 12px; margin: 0 0 .7rem;
                              background: #121215;}
@@ -769,22 +874,34 @@ st.markdown(
                             margin-top: .12rem;}
     .runa-planet-row > span:first-child {font-weight: 560; white-space: nowrap;}
     .runa-catalogue-note {color: #777780; font-size: .78rem; margin: -.2rem 0 1rem;}
-    .runa-cifuentes-table {overflow-x: auto; border: 1px solid #2d2d33;
-                            border-radius: 12px; margin: .7rem 0 .85rem; background: #121215;}
-    .runa-cifuentes-row {display: grid; grid-template-columns: minmax(5.6rem, .9fr)
-                          repeat(2, minmax(6.4rem, 1fr)) minmax(5.7rem, .9fr)
-                          minmax(5.5rem, .85fr) repeat(2, minmax(5rem, .8fr)) minmax(2rem, .3fr);
-                          gap: .55rem; align-items: center; min-width: 790px;
-                          padding: .62rem .85rem; color: #ededf0; font-size: .84rem;
-                          font-variant-numeric: tabular-nums;}
-    .runa-cifuentes-row + .runa-cifuentes-row {border-top: 1px solid #28282e;}
-    .runa-cifuentes-head {color: #8b8b95; font-size: .7rem; font-weight: 650;
-                           letter-spacing: .07em; text-transform: uppercase;}
-    .runa-cifuentes-row small {display: block; color: #92929d; font-size: .7rem;
-                                font-weight: 430; letter-spacing: 0; text-transform: none;
-                                margin-top: .1rem;}
-    .runa-cifuentes-row:not(.runa-cifuentes-head) small {display: inline; margin-left: .28rem;}
-    .runa-cifuentes-type {color: #f3f3f5; font-weight: 590;}
+    .runa-cifuentes-scroll {overflow-x: auto; border: 1px solid #2d2d33;
+                            border-radius: 12px; margin: .7rem 0 1rem;
+                            background: #121215;}
+    .runa-cifuentes-table {border-collapse: separate; border-spacing: 0;
+                           width: max-content; min-width: 2400px;
+                           color: #ededf0; font-size: .96rem;
+                           font-variant-numeric: tabular-nums;}
+    .runa-cifuentes-table th,
+    .runa-cifuentes-table td {padding: .72rem .8rem; text-align: center;
+                              white-space: nowrap; border-top: 1px solid #28282e;}
+    .runa-cifuentes-table thead th {color: #e2e2e5; font-size: 1.08rem;
+                                    font-weight: 650; border-top: 0;
+                                    border-bottom: 1px solid #36363d;}
+    .runa-cifuentes-table th small {display: block; color: #9b9ba5;
+                                    font-size: .86rem; font-weight: 500;
+                                    margin-top: .16rem;}
+    .runa-cifuentes-table th sub {font-size: .74em;}
+    .runa-cifuentes-table th sub span {font-size: .72em; margin-left: .05em;}
+    .runa-cifuentes-band {min-width: 6.2rem;}
+    .runa-cifuentes-error {color: #8f8f99; font-size: inherit; font-weight: inherit;}
+    .runa-cifuentes-missing {color: #686872;}
+    .runa-cifuentes-table .runa-cifuentes-type {position: sticky; left: 0;
+                                                z-index: 2; min-width: 7.2rem;
+                                                text-align: left; color: #f3f3f5;
+                                                font-weight: 620; background: #121215;
+                                                box-shadow: 1px 0 #34343a;}
+    .runa-cifuentes-table thead .runa-cifuentes-type {z-index: 3;
+                                                      text-align: center;}
     .runa-photometry-table {overflow: hidden; border: 1px solid #2d2d33;
                             border-radius: 12px; margin: .7rem 0 .85rem;
                             background: #121215;}
@@ -819,6 +936,17 @@ st.markdown(
                              padding-left: .65rem; padding-right: .65rem;}
         .runa-photometry-row {grid-template-columns: 1fr 1fr; gap: .2rem;}
     }
+    @media (max-width: 1050px) {
+        div[data-testid="stHorizontalBlock"]:has(.runa-identification-column-marker) {
+            flex-wrap: wrap;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.runa-identification-column-marker)
+        > div[data-testid="stColumn"] {
+            flex: 1 1 100% !important;
+            width: 100% !important;
+            min-width: 100% !important;
+        }
+    }
     </style>
     <div class="runa-brand"><strong>C. Cifuentes</strong><span>_</span> / Projects / RUNA</div>
     <div class="runa-eyebrow">Stellar characterisation</div>
@@ -839,7 +967,7 @@ available_tools = [
     "Identification", "Photometry", "Parameters", "Kinematics", "Multiplicity", "Planets",
 ]
 current_tool = st.session_state.get("runa_tool", "Identification")
-if current_tool not in [*available_tools, "Data"]:
+if current_tool not in [*available_tools, "Data", "Models"]:
     current_tool = "Identification"
 if "runa_tool" not in st.session_state:
     st.session_state["runa_tool"] = current_tool
@@ -855,6 +983,11 @@ def select_main_tool():
 
 def select_data_tool():
     st.session_state["runa_tool"] = "Data"
+    st.session_state["runa_main_nav"] = None
+
+
+def select_models_tool():
+    st.session_state["runa_tool"] = "Models"
     st.session_state["runa_main_nav"] = None
 
 
@@ -885,7 +1018,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-menu_col, data_col = st.columns([7, 0.85], gap="small")
+menu_col, data_col, models_col = st.columns([7, 0.85, 0.85], gap="small")
 with menu_col:
     st.segmented_control(
         "RUNA tool", available_tools, label_visibility="collapsed",
@@ -895,7 +1028,14 @@ with data_col:
     st.button(
         "Data", use_container_width=True,
         type="secondary",
+        key="runa_data_button",
         on_click=select_data_tool,
+    )
+with models_col:
+    st.button(
+        "Models", use_container_width=True,
+        type="secondary", key="runa_models_button",
+        on_click=select_models_tool,
     )
 
 tool = st.session_state["runa_tool"]
@@ -928,10 +1068,13 @@ if top_submitted:
 if search_error:
     st.error(search_error)
 
-if tool in ("Identification", "Data", "Parameters"):
+if tool in ("Identification", "Data", "Models", "Parameters"):
     input_card = None
     parameters_card = None
-    result_card = st.container(border=tool == "Identification") if tool != "Data" else None
+    result_card = (
+        st.container(border=tool == "Identification")
+        if tool not in ("Data", "Models") else None
+    )
 else:
     column_widths = [0.62, 1.38] if tool == "Parameters" else [1, 1]
     inputs, results = st.columns(column_widths, gap="small")
@@ -951,14 +1094,31 @@ else:
 if tool == "Data":
     st.markdown("### Reference data")
     st.caption(
-        "Average astrophysical parameters for K5 V–L2.0 dwarfs from "
-        "Cifuentes et al. (2020), Table 6."
+        "Average astrophysical parameters and absolute magnitudes for K5 V–L2.0 "
+        "dwarfs from Cifuentes et al. (2020), Tables 6 and 7."
     )
-    cifuentes20_table(load_table6())
-    st.caption(
-        "Uncertainties are shown in grey parentheses. L is reported in "
-        "10⁻⁴ L☉; N is the number of objects in each spectral-type bin."
+    cifuentes20_table(load_reference_data())
+    st.markdown(
+        "These reference values describe single, main-sequence K5 V–L2.0 stars "
+        "with no companions within 5 arcsec, no extreme-youth overluminosity, "
+        "and good Gaia DR2 astrometric and photometric quality. **N** is the "
+        "number of well-behaved stars in each spectral-type bin."
     )
+    st.markdown(
+        "From M0.0 V to L2.0, each value is a three-subtype rolling median after "
+        "2.5σ clipping. K5 V and K7 V use simple medians. Grey parentheses show "
+        "the standard deviations, which include intrinsic main-sequence scatter "
+        "and become less precise in sparsely populated late-type bins. The unsmoothed "
+        "K5 V boundary values should be treated with care."
+    )
+    st.markdown(
+        "The 14 representative absolute magnitudes can be combined into colours, "
+        "for example G−J = M<sub>G</sub> − M<sub>J</sub>.",
+        unsafe_allow_html=True,
+    )
+
+elif tool == "Models":
+    show_models()
 
 elif tool == "Identification":
     with result_card:
@@ -987,10 +1147,14 @@ elif tool == "Identification":
             result_left, result_right = st.columns(2, gap="small")
 
             with result_left:
+                st.markdown(
+                    '<span class="runa-identification-column-marker"></span>',
+                    unsafe_allow_html=True,
+                )
                 survey_image = star.get("survey_image")
                 if survey_image is not None:
                     st.write(f"#### {survey_image['catalogue']} image")
-                    st.image(survey_image["data"])
+                    survey_image_view(survey_image["data"])
                     st.caption(survey_image["caption"])
                 else:
                     st.write("#### Survey image")
@@ -1056,7 +1220,14 @@ elif tool == "Identification":
                 *catalogue_rows(star),
             ]
             with result_right:
-                data_section("Identifiers", identifier_rows)
+                st.markdown(
+                    '<span class="runa-identification-column-marker"></span>',
+                    unsafe_allow_html=True,
+                )
+                data_section(
+                    "Identifiers", identifier_rows,
+                    class_name="runa-identification-data",
+                )
 
             parallax_text = None
             parallax_error = None
@@ -1127,6 +1298,7 @@ elif tool == "Identification":
                          source_name(star.get("rvz_bibcode")), radial_velocity_error,
                          "km/s"),
                     ],
+                    class_name="runa-identification-data",
                 )
 
             gaia = star["gaia_photometry"]
@@ -1159,6 +1331,7 @@ elif tool == "Identification":
                         ("Johnson V", f"{v_mag:.3f}" if v_mag is not None else None,
                          "UCAC4", f"{v_error:.3f}" if v_error is not None else None, "mag"),
                     ],
+                    class_name="runa-identification-data",
                 )
 
             metallicity = None
@@ -1170,6 +1343,7 @@ elif tool == "Identification":
                     [
                         ("[Fe/H]", metallicity, "SIMBAD compilation", None, "dex"),
                     ],
+                    class_name="runa-identification-data",
                 )
 
             with result_left:
@@ -1191,6 +1365,7 @@ elif tool == "Identification":
 
 elif tool == "Photometry":
     position = star_cmd_position(star) if star is not None else None
+    photometry_parameters = calculate_parameters(star) if star is not None else None
     photometric_distance = None
     if star is not None:
         gaia = star.get("gaia_photometry", {})
@@ -1211,16 +1386,31 @@ elif tool == "Photometry":
             bp_rp = None
             if gaia.get("phot_bp_mean_mag") is not None and gaia.get("phot_rp_mean_mag") is not None:
                 bp_rp = gaia["phot_bp_mean_mag"] - gaia["phot_rp_mean_mag"]
+            absolute_g = photometry_parameters.get("M_G")
+            absolute_j = photometry_parameters.get("M_J")
             first_row = st.columns(2)
             second_row = st.columns(2)
+            third_row = st.columns(2)
             with first_row[0]:
-                st.metric("Gaia G", magnitude_value(gaia.get("phot_g_mean_mag")))
+                photometry_summary_metric("Gaia G", gaia.get("phot_g_mean_mag"))
             with first_row[1]:
-                st.metric("2MASS J", magnitude_value(twomass.get("j_mag")))
+                photometry_summary_metric("2MASS J", twomass.get("j_mag"))
             with second_row[0]:
-                st.metric("Johnson V", magnitude_value(johnson.get("v_mag")))
+                photometry_summary_metric("Johnson V", johnson.get("v_mag"))
             with second_row[1]:
-                st.metric("BP−RP colour", magnitude_value(bp_rp))
+                photometry_summary_metric("BP−RP colour", bp_rp)
+            with third_row[0]:
+                photometry_summary_metric(
+                    "M_G",
+                    absolute_g["value"] if absolute_g is not None else None,
+                    absolute_g.get("error") if absolute_g is not None else None,
+                )
+            with third_row[1]:
+                photometry_summary_metric(
+                    "M_J",
+                    absolute_j["value"] if absolute_j is not None else None,
+                    absolute_j.get("error") if absolute_j is not None else None,
+                )
 
     with spectral_type_card:
         st.subheader("Spectral type estimation")
@@ -1693,6 +1883,13 @@ elif tool == "Parameters":
     with result_card:
         if star is None:
             st.info("Choose a star in **Identification** first.")
+            stellar_parameter_table([
+                ("Luminosity", "L☉", [], []),
+                ("Mass", "M☉", [], []),
+                ("Radius", "R☉", [], []),
+                ("Effective temperature", "K", [], []),
+                ("Metallicity", "dex", [], []),
+            ])
         else:
             luminosity_rows = [
                 (
@@ -1893,7 +2090,7 @@ elif tool == "Kinematics":
                     banyan_error = "The BANYAN Σ calculation failed. Please try again."
 
     with result_card:
-        st.subheader("BANYAN Σ membership")
+        panel_heading("BANYAN Σ membership")
         if banyan_error:
             st.error(banyan_error)
         elif star is None:
@@ -2018,7 +2215,7 @@ elif tool == "Planets":
             st.caption("The search uses the archive's PSCompPars table.")
 
     with result_card:
-        st.subheader("Registered planets")
+        panel_heading("Registered planets")
         if star is None:
             st.write("Choose a star in **Identification** first.")
         else:
@@ -2069,9 +2266,9 @@ elif tool == "Multiplicity":
             query_error = "The Gaia query failed. Please try again later."
 
     with classification_card:
+        panel_heading("Multiplicity")
         catalogue_multiplicity = published_multiplicity(star)
         if star is None:
-            st.subheader("Multiplicity")
             st.caption("Load an object in Identification first.")
         elif catalogue_multiplicity and catalogue_multiplicity["type"].startswith("Multiple"):
             st.subheader("Known multiple")

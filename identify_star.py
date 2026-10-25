@@ -179,32 +179,33 @@ def coordinates_at_epoch(
 
 
 def lookup_2mass_j(twomass_id):
-    """Find J in the 2MASS catalogue using the exact SIMBAD identifier."""
+    """Find J, H and Ks using the exact SIMBAD 2MASS identifier."""
     if not twomass_id or not twomass_id.startswith("2MASS J"):
         return {}
 
     source_id = twomass_id.replace("2MASS J", "", 1).strip()
     vizier = Vizier(
-        columns=["2MASS", "Jmag", "e_Jmag", "Qflg"],
+        columns=["2MASS", "Jmag", "e_Jmag", "Hmag", "e_Hmag",
+                 "Kmag", "e_Kmag", "Qflg"],
         catalog="II/246/out",
         row_limit=10,
     )
     try:
-        results = vizier.query_object(twomass_id, radius=5 * u.arcsec)
+        results = vizier.query_constraints(**{"2MASS": "=" + source_id})
         if results:
             for row in results[0]:
                 if str(row["2MASS"]).strip() != source_id:
                     continue
-                j_mag = row["Jmag"]
-                if np.ma.is_masked(j_mag):
-                    return {}
-                j_error = row["e_Jmag"]
                 quality = row["Qflg"]
-                return {
-                    "j_mag": float(j_mag),
-                    "j_error": None if np.ma.is_masked(j_error) else float(j_error),
-                    "j_quality": None if np.ma.is_masked(quality) else str(quality)[0],
-                }
+                photometry = {}
+                for index, (band, column) in enumerate((("j", "Jmag"), ("h", "Hmag"), ("ks", "Kmag"))):
+                    value, error = row[column], row["e_" + column]
+                    photometry[band + "_mag"] = None if np.ma.is_masked(value) else float(value)
+                    photometry[band + "_error"] = None if np.ma.is_masked(error) else float(error)
+                    photometry[band + "_quality"] = (
+                        None if np.ma.is_masked(quality) else str(quality)[index]
+                    )
+                return photometry
     except Exception:
         pass
     return {}

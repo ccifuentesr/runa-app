@@ -1,0 +1,63 @@
+{
+  "sample_size": 1509,
+  "train_size": 1207,
+  "test_size": 302,
+  "seed": 42,
+  "folds": 5,
+  "sklearn_version": "1.9.1",
+  "data_sha256": "8e4eabb956f72c0d3a1508cea1347fe3647c3c12329240438d1f970f41468b91",
+  "exclusions_sha256": "e5b120fe00af040f1f3b4cad6b4cab65a408ac601fc728f0c374c97256b1ba59",
+  "exclusions": [
+    {
+      "Karmn": "J07320+173E",
+      "reason": "Incorrect M3 V label in the 2020 dataset; revised to M0 V in Cifuentes et al. (2025). Excluded from training, validation and testing.",
+      "reference": "Cifuentes et al. (2025)"
+    }
+  ],
+  "code_sha256": "83afa113d53472822a602af6fc7ef82ad3007227a266cf6b694b0fbfa7d5a5a3",
+  "loader_sha256": "162b3c668c84847fe835d73bed00f25099ca97d6cb078fbd0cc002b964ae1602",
+  "colour_range": [
+    1.9364,
+    3.7347
+  ],
+  "counts": {
+    "0.0": 116,
+    "0.5": 70,
+    "1.0": 137,
+    "1.5": 118,
+    "2.0": 122,
+    "2.5": 146,
+    "3.0": 169,
+    "3.5": 235,
+    "4.0": 195,
+    "4.5": 114,
+    "5.0": 60,
+    "5.5": 27
+  },
+  "metrics": [
+    {
+      "model": "Linear",
+      "features": "G-J",
+      "cv_mae": 0.3007473621707303,
+      "cv_std": 0.01883851163293187,
+      "test_mae": 0.30853449086572804,
+      "within_one": 0.9801324503311258
+    },
+    {
+      "model": "Quadratic",
+      "features": "G-J",
+      "cv_mae": 0.24637926209563119,
+      "cv_std": 0.018821901001320886,
+      "test_mae": 0.24692447563182002,
+      "within_one": 1.0
+    },
+    {
+      "model": "Random forest",
+      "features": "G-J, J-W2",
+      "cv_mae": 0.2516916649797176,
+      "cv_std": 0.014205882527989096,
+      "test_mae": 0.2327658986385702,
+      "within_one": 0.9966887417218543
+    }
+  ]
+}

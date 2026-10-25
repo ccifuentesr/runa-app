@@ -1,0 +1,2 @@
+Karmn,reason,reference
+J07320+173E,"Incorrect M3 V label in the 2020 dataset; revised to M0 V in Cifuentes et al. (2025). Excluded from training, validation and testing.",Cifuentes et al. (2025)

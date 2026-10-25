@@ -1,9 +1,115 @@
 """Compact comparison of published and estimated stellar parameters."""
 
+import csv
+from io import StringIO
+from pathlib import Path
 from decimal import Decimal
 from html import escape
 
 import streamlit as st
+from parameters import radius_from_luminosity_temperature, mass_from_radius_schweitzer
+
+
+BIBCODES_FILE = Path(__file__).with_name("data") / "bibcodes.csv"
+
+
+def load_bibcodes():
+    """Load the small local bibliography used by exported results."""
+    with BIBCODES_FILE.open(newline="", encoding="utf-8") as source:
+        return {
+            row["reference"]: row["bibcode"]
+            for row in csv.DictReader(source)
+        }
+
+
+def reference_bibcode(reference, bibcodes):
+    """Match a displayed method reference to its ADS bibcode."""
+    text = str(reference or "").lower()
+    references = (
+        ("cifuentes et al. (2020)", "cifuentes20"),
+        ("cifuentes et al. (2025)", "cifuentes25"),
+        ("schweitzer et al. (2019)", "schweitzer19"),
+        ("eker et al. (2018)", "eker18"),
+        ("duque-arribas et al. (2023)", "duque_arribas23"),
+    )
+    for label, key in references:
+        if label in text:
+            return bibcodes.get(key, "")
+    return ""
+
+
+def estimate_source(label):
+    """Describe the measured or derived input behind one estimate."""
+    text = str(label)
+    if "M_G" in text:
+        return "M_G"
+    if "M_J" in text:
+        return "M_J"
+    if "manual L and T_eff" in text or "L and T_eff" in text:
+        return "L, T_eff"
+    if "manual radius" in text or "radius" in text.lower():
+        return "R"
+    if "luminosity" in text.lower():
+        return "L"
+    if "SpT" in text:
+        return "SpT"
+    if text == "[Fe/H]":
+        return "G, BP, RP, W1, W2, parallax"
+    return text.removeprefix("From ")
+
+
+def estimated_parameters_csv(groups):
+    """Return an inspectable CSV containing the currently displayed estimates."""
+    bibcodes = load_bibcodes()
+    parameter_labels = {
+        "Luminosity": "L",
+        "Radius": "R",
+        "Mass": "M",
+        "Effective temperature": "Teff",
+        "Metallicity": "[Fe/H]",
+    }
+    unit_labels = {
+        "L☉": "L_sol",
+        "R☉": "R_sol",
+        "M☉": "M_sol",
+    }
+    export_order = {
+        "Luminosity": 0,
+        "Radius": 1,
+        "Mass": 2,
+        "Effective temperature": 3,
+        "Metallicity": 4,
+    }
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=("parameter", "value", "error", "unit", "source", "reference"),
+        lineterminator="\n",
+    )
+    writer.writeheader()
+    ordered_groups = sorted(
+        enumerate(groups),
+        key=lambda item: (export_order.get(item[1][0], 99), item[0]),
+    )
+    for _, (name, unit, _, estimated_rows) in ordered_groups:
+        for row in estimated_rows:
+            writer.writerow({
+                "parameter": parameter_labels.get(name, name),
+                "value": row[1],
+                "error": row[3] if row[3] is not None else "",
+                "unit": unit_labels.get(unit, unit),
+                "source": estimate_source(row[0]),
+                "reference": reference_bibcode(row[2], bibcodes),
+            })
+    return output.getvalue()
+
+
+def panel_heading(title):
+    """Use the same small heading for result panels across RUNA."""
+    st.markdown(
+        f'<div class="runa-panel-heading">{escape(title)}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def decimal_text(value):
@@ -35,6 +141,52 @@ def reference_cell(row, estimated=False):
     return reference
 
 
+def manual_parameter_groups():
+    """Calculate radius and mass from independent user inputs."""
+    first, second = st.columns(2, gap="small")
+    with first:
+        luminosity = st.number_input(
+            "L (solar units)", min_value=0.00000001, value=0.01,
+            format="%.8f", key="manual_parameters_luminosity",
+        )
+        luminosity_error = st.number_input(
+            "L uncertainty (optional)", min_value=0.0, value=None,
+            format="%.8f", key="manual_parameters_luminosity_error",
+        )
+    with second:
+        temperature = st.number_input(
+            "Teff (K)", min_value=1.0, value=3300.0,
+            format="%.1f", key="manual_parameters_temperature",
+        )
+        temperature_error = st.number_input(
+            "Teff uncertainty (optional)", min_value=0.0, value=None,
+            format="%.1f", key="manual_parameters_temperature_error",
+        )
+    radius = radius_from_luminosity_temperature(
+        luminosity, luminosity_error, temperature, temperature_error,
+    )
+    mass = mass_from_radius_schweitzer(radius["value"], radius["error"])
+    st.caption("Manual calculation · independent of the loaded star.")
+    st.caption("Mass relation: main-sequence M dwarfs; not suitable for very young stars.")
+    if luminosity_error is None or temperature_error is None:
+        st.caption("Errors use available input uncertainties only; mass also includes coefficient errors.")
+    radius_row = (
+        "From manual L and T_eff", f'{radius["value"]:.4f}',
+        "Stefan–Boltzmann law",
+        f'{radius["error"]:.4f}' if radius["error"] is not None else None, "R☉",
+    )
+    mass_rows = []
+    if mass is not None:
+        mass_rows.append((
+            "From manual radius", f'{mass["value"]:.4f}', mass["reference"],
+            f'{mass["error"]:.4f}', "M☉",
+        ))
+    return [
+        ("Radius", "R☉", [], [radius_row]),
+        ("Mass", "M☉", [], mass_rows),
+    ]
+
+
 def stellar_parameter_table(groups):
     """Show published values and estimates in two simple panels."""
     st.markdown(
@@ -62,8 +214,16 @@ def stellar_parameter_table(groups):
     for column, title, row_index in zip(columns, ("Published", "Estimated"), (2, 3)):
         with column:
             with st.container(border=True):
-                st.subheader(title)
-                for group in groups:
+                panel_heading(title)
+                displayed_groups = groups
+                if title == "Estimated":
+                    mode = st.radio(
+                        "Mode", ["Loaded star", "Manual"], horizontal=True,
+                        key="parameters_estimation_mode",
+                    )
+                    if mode == "Manual":
+                        displayed_groups = manual_parameter_groups()
+                for group in displayed_groups:
                     name, unit = group[:2]
                     unit_html = escape(unit)
                     if unit in ("L☉", "R☉", "M☉"):
@@ -88,3 +248,14 @@ def stellar_parameter_table(groups):
                         + "".join(entries) + '</section>',
                         unsafe_allow_html=True,
                     )
+                if title == "Estimated":
+                    export = estimated_parameters_csv(displayed_groups)
+                    if export.count("\n") > 1:
+                        st.download_button(
+                            "Download estimated parameters (.csv)",
+                            data=export,
+                            file_name="runa_estimated_parameters.csv",
+                            mime="text/csv",
+                            use_container_width=True,
+                            key="download_estimated_parameters",
+                        )

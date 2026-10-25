@@ -12,7 +12,7 @@ i,Passband_i.dat
 RP,Passband_RP.dat
 J,Passband_J.dat
 H,Passband_H.dat
-K,Passband_Ks.dat
+Ks,Passband_Ks.dat
 W1,Passband_W1.dat
 W2,Passband_W2.dat
 W3,Passband_W3.dat

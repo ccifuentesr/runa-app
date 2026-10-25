@@ -27,7 +27,7 @@ VOSA_FILTERS = {
     ("SDSS9", "z"): "SLOAN/SDSS.z",
     ("2MASS", "J"): "2MASS/2MASS.J",
     ("2MASS", "H"): "2MASS/2MASS.H",
-    ("2MASS", "K"): "2MASS/2MASS.Ks",
+    ("2MASS", "Ks"): "2MASS/2MASS.Ks",
     ("AllWISE", "W1"): "WISE/WISE.W1",
     ("AllWISE", "W2"): "WISE/WISE.W2",
     ("AllWISE", "W3"): "WISE/WISE.W3",

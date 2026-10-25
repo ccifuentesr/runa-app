@@ -22,6 +22,7 @@ from sklearn.preprocessing import PolynomialFeatures
 
 PROJECT_DIR = Path(__file__).resolve().parent
 DATA_FILE = PROJECT_DIR / "data" / "cifuentes20_dataset.csv"
+EXCLUSIONS_FILE = PROJECT_DIR / "data" / "models" / "training_exclusions.csv"
 RESULTS_DIR = PROJECT_DIR / "results"
 RANDOM_STATE = 42
 FEATURES = ["G-J", "J-W2"]
@@ -30,6 +31,8 @@ FEATURES = ["G-J", "J-W2"]
 def load_stars():
     """Keep M0-M5.5 stars with usable G, J, and W2 measurements."""
     stars = pd.read_csv(DATA_FILE)
+    exclusions = pd.read_csv(EXCLUSIONS_FILE)
+    stars = stars.loc[~stars["Karmn"].isin(exclusions["Karmn"])].copy()
     required_columns = [
         "Karmn", "SpTnum", "Multiple", "Young", "RUWE",
         "Gmag", "Jmag", "W2mag", "q_Gmag", "q_Jmag", "q_W2mag",

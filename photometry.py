@@ -37,8 +37,6 @@ def _load_vosa_filters():
             if not fields or fields[0] in {"", "filter"} or len(fields) < 4:
                 continue
             label = fields[0]
-            if label == "Ks":
-                label = "K"
             try:
                 filters[label] = {
                     "wavelength": float(fields[1]),
@@ -115,7 +113,7 @@ PHOTOMETRIC_CATALOGS = {
         "bands": [
             ("J", "Jmag", "e_Jmag", "#d7d85a", "near-IR"),
             ("H", "Hmag", "e_Hmag", "#e6bb62", "near-IR"),
-            ("K", "Kmag", "e_Kmag", "#f59e0b", "near-IR"),
+            ("Ks", "Kmag", "e_Kmag", "#f59e0b", "near-IR"),
         ],
     },
     "SDSS9": {
