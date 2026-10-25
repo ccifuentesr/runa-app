@@ -28,21 +28,38 @@ def show_models():
     .model-report-table table {width:100%;border-collapse:collapse;font-size:1.02rem;}
     .model-report-table th {color:#92929d;font-weight:500;text-align:left;}
     .model-report-table td,.model-report-table th {padding:.65rem .7rem;border:0;border-bottom:1px solid #29292d;}
-    .model-flow {display:flex;align-items:stretch;gap:.65rem;margin:.8rem 0 1.1rem;}
-    .model-flow-step {flex:1;min-width:0;border:1px solid #333338;border-radius:10px;padding:.9rem 1rem;background:#18181b;}
+    .model-subtitle {color:#e4e4e7;font-size:1.2rem;line-height:1.4;margin:.1rem 0 1.15rem;}
+    .model-flow {display:grid;grid-template-columns:minmax(0,1fr) 28px minmax(0,1.35fr) 28px minmax(0,1.5fr);align-items:stretch;gap:.5rem;margin:.8rem 0 1.1rem;}
+    .model-flow-step {min-width:0;border:1px solid #333338;border-radius:10px;padding:.9rem 1rem;background:#18181b;}
     .model-flow-step small {display:block;color:#92929d;font-size:.76rem;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.45rem;}
     .model-flow-step strong {display:block;color:#e4e4e7;font-size:1.15rem;font-weight:550;}
     .model-flow-step span {display:block;color:#92929d;font-size:.87rem;margin-top:.35rem;}
-    .model-flow-step:last-child {border-color:#426b5b;}
-    .model-flow-step:last-child strong {color:#64dfb4;}
-    .model-flow-arrow {align-self:center;color:#72727c;}
+    .model-flow-step.model-selection {border-color:#595443;}
+    .model-flow-step.model-selection strong {color:#f4cf75;}
+    .model-flow-arrow {align-self:center;justify-self:center;color:#72727c;}
+    .model-split {display:grid;grid-template-columns:1fr 1fr;gap:.55rem;}
+    .model-split-card {border:1px solid #333338;border-radius:10px;padding:.8rem .85rem;background:#18181b;}
+    .model-split-card small {display:block;color:#92929d;font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.4rem;}
+    .model-split-card strong {display:block;color:#e4e4e7;font-size:1.08rem;font-weight:570;}
+    .model-split-card span {display:block;color:#92929d;font-size:.82rem;line-height:1.35;margin-top:.3rem;}
+    .model-split-card.model-train {border-color:#426b5b;}
+    .model-split-card.model-train strong {color:#64dfb4;}
+    .model-split-card.model-test {border-color:#5d5968;}
+    .model-split-card.model-test strong {color:#c9c4e8;}
+    .model-flow-outcome {margin-top:.55rem;padding-top:.65rem;border-top:1px solid #29292d;color:#a1a1aa;font-size:.84rem;line-height:1.4;}
+    .model-flow-outcome strong {color:#e4e4e7;font-weight:550;}
     @media(max-width:700px) {
-        .model-flow {flex-direction:column;gap:.4rem;}
+        .model-flow {grid-template-columns:1fr;gap:.4rem;}
         .model-flow-arrow {transform:rotate(90deg);}
+        .model-split {grid-template-columns:1fr;}
     }
     </style>""", unsafe_allow_html=True)
     st.subheader("Spectral type estimation")
-    st.caption("A supervised regression from photometric colours to M-dwarf subtype.")
+    st.markdown(
+        '<p class="model-subtitle">A supervised regression from photometric colours '
+        'to M-dwarf subtype.</p>',
+        unsafe_allow_html=True,
+    )
     with st.container(border=True):
         st.markdown("#### Context")
         st.write(
@@ -70,26 +87,21 @@ def show_models():
 
     with st.container(border=True):
         st.markdown("#### From observations to prediction")
-        st.markdown('''
+        st.markdown(f'''
         <div class="model-flow" aria-label="Prediction workflow">
-          <div class="model-flow-step"><small>01 · Observations</small><strong>G and J</strong><span>Measured magnitudes</span></div>
+          <div class="model-flow-step"><small>01 · Observations</small><strong>Published subtype<br>and colours</strong><span>G, J and W2 catalogue measurements</span></div>
           <div class="model-flow-arrow" aria-hidden="true">→</div>
-          <div class="model-flow-step"><small>02 · Feature</small><strong>G−J colour</strong><span>Difference in magnitudes</span></div>
+          <div class="model-flow-step model-selection"><small>02 · Quality selection</small><strong>{report['sample_size']} selected stars</strong><span>Usable photometry only. Excludes flagged young stars, known or candidate multiples, and problematic G, J or W2 measurements.</span></div>
           <div class="model-flow-arrow" aria-hidden="true">→</div>
-          <div class="model-flow-step"><small>03 · Model</small><strong>Quadratic regression</strong><span>Learned from labelled stars</span></div>
-          <div class="model-flow-arrow" aria-hidden="true">→</div>
-          <div class="model-flow-step"><small>04 · Prediction</small><strong>Spectral subtype</strong><span>M0–M5.5 · half-subtype steps</span></div>
+          <div>
+            <div class="model-split" aria-label="Training and test split">
+              <div class="model-split-card model-train"><small>03 · Split · Train · 80%</small><strong>{report['train_size']} stars</strong><span>Model fitting and five-fold cross-validation.</span></div>
+              <div class="model-split-card model-test"><small>03 · Split · Test · 20%</small><strong>{report['test_size']} stars</strong><span>Held out from fitting to measure prediction errors.</span></div>
+            </div>
+            <div class="model-flow-outcome"><strong>Deploy:</strong> after evaluation, the quadratic G−J model is fitted to the full quality-controlled catalogue to predict M0–M5.5 subtypes.</div>
+          </div>
         </div>
         ''', unsafe_allow_html=True)
-        st.caption(
-            "Photometry currently uses the quadratic model, fitted to the full filtered "
-            "catalogue. Predictions are bounded to M0–M5.5 and rounded to half a subtype. "
-            "The evaluation below uses separate training and test stars."
-        )
-        columns = st.columns(3)
-        for column, label, value in zip(columns, ["Filtered stars", "Training", "Held-out test"],
-                                        [report["sample_size"], report["train_size"], report["test_size"]]):
-            column.metric(label, value)
         with st.expander("Training data and selection"):
             for exclusion in report.get("exclusions", []):
                 st.caption(f"Excluded: {exclusion['Karmn']} — {exclusion['reason']}")
@@ -111,7 +123,11 @@ def show_models():
 
     with st.container(border=True):
         st.markdown("#### Model comparison")
-        st.caption("Lower MAE is better. Errors are measured in spectral subtypes.")
+        st.write(
+            "**MAE · Mean absolute error** is the average absolute difference between "
+            "predicted and published spectral subtype. An MAE of 0.25 means an average "
+            "error of a quarter of a subtype. Lower is better."
+        )
         metrics = pd.DataFrame(report["metrics"])
         table = metrics.rename(columns={
             "model": "Model", "features": "Colours", "cv_mae": "CV MAE",

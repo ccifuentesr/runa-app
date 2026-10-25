@@ -208,13 +208,23 @@ def stellar_parameter_table(groups):
         'flex:1 1 12rem;margin-left:auto;}'
         '.parameter-method {color:#c7c7cf;}'
         '.parameter-missing {font-size:.9rem;color:#85858f;}'
+        '.st-key-parameters_published {border-color:#5d5968 !important;'
+        'border-radius:10px !important;background:#18181b;}'
+        '.st-key-parameters_estimated {border-color:#595443 !important;'
+        'border-radius:10px !important;background:#18181b;}'
+        '.st-key-parameters_published .runa-panel-heading {'
+        'color:#c9c4e8;font-size:1.15rem;font-weight:550;letter-spacing:.04em;}'
+        '.st-key-parameters_estimated .runa-panel-heading {'
+        'color:#f4cf75;font-size:1.15rem;font-weight:550;letter-spacing:.04em;}'
+        '.st-key-parameters_published .parameter-number {color:#c9c4e8;}'
+        '.st-key-parameters_estimated .parameter-number {color:#f4cf75;}'
         '</style>',
         unsafe_allow_html=True,
     )
     columns = st.columns(2, gap="small")
     for column, title, row_index in zip(columns, ("Published", "Estimated"), (2, 3)):
         with column:
-            with st.container(border=True):
+            with st.container(border=True, key=f"parameters_{title.lower()}"):
                 panel_heading(title)
                 displayed_groups = groups
                 if title == "Estimated":

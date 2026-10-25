@@ -68,11 +68,14 @@ def data_row(label, value, source=None, error=None, unit=None):
     if source == "Cifuentes+20" and error == "photometric_warning":
         source_html = (
             '<span class="runa-data-source-reference">Cifuentes+20</span>'
-            '<span class="runa-warning-badge" title="Photometric distance only. '
+            '<span class="runa-warning-wrap"><button type="button" '
+            'class="runa-warning-badge" aria-describedby="photometric-distance-warning">'
+            'Warning</button><span class="runa-warning-tooltip" role="tooltip" '
+            'id="photometric-distance-warning">Photometric distance only. '
             'The M_G–(G−J) relation is calibrated for solar-metallicity stars '
             'with good photometry and negligible extinction. Cifuentes et al. '
             '(2020) report a median distance accuracy of 36%. Use a '
-            'trigonometric parallax when available.">Warning</span>'
+            'trigonometric parallax when available.</span></span>'
         )
     else:
         source_html = escape(source) if source else ""
@@ -101,6 +104,43 @@ def data_section(title, rows, class_name=""):
             f'{title_html}</div>{content}</section>',
             unsafe_allow_html=True,
         )
+
+
+def photometric_distance_flow(result):
+    """Show the inputs, calibration and resulting photometric distance."""
+    colour_error = result.get("colour_error")
+    colour_error_html = (
+        f'<span class="runa-distance-error">({colour_error:.3f})</span>'
+        if colour_error is not None else ""
+    )
+    relation = result["relation"]
+    st.markdown(
+        '<div class="runa-distance-flow" aria-label="Photometric distance workflow">'
+        '<div class="runa-distance-step">'
+        '<small>01 · Input colour</small>'
+        f'<strong>G−J {result["colour"]:.3f} {colour_error_html}</strong>'
+        '<span>Gaia G + 2MASS J · mag</span></div>'
+        '<div class="runa-distance-arrow" aria-hidden="true">→</div>'
+        '<div class="runa-distance-step runa-distance-calibration">'
+        '<small>02 · Calibration</small>'
+        f'<strong>M<sub>G</sub> {result["absolute_g"]:.2f} mag</strong>'
+        '<span>Cifuentes et al. (2020), Table 5 · '
+        f'R² = {relation["r_squared"]:.4f}</span>'
+        '<span class="runa-warning-wrap"><button type="button" '
+        'class="runa-warning-badge" aria-describedby="photometric-distance-warning">'
+        'Warning</button><span class="runa-warning-tooltip" role="tooltip" '
+        'id="photometric-distance-warning">Photometric distance only. '
+        'The M_G–(G−J) relation is calibrated for solar-metallicity stars '
+        'with good photometry and negligible extinction. Cifuentes et al. '
+        '(2020) report a median distance accuracy of 36%. Use a '
+        'trigonometric parallax when available.</span></span></div>'
+        '<div class="runa-distance-arrow" aria-hidden="true">→</div>'
+        '<div class="runa-distance-step runa-distance-result">'
+        '<small>03 · Estimated distance</small>'
+        f'<strong>{result["distance_pc"]:.1f} <span>pc</span></strong>'
+        '<span>Derived from the distance modulus</span></div></div>',
+        unsafe_allow_html=True,
+    )
 
 
 def parameter_section(title, rows, empty_message=None):
@@ -714,6 +754,43 @@ st.markdown(
                          border-radius: 999px; color: #f4cf75; background: #2b2518;
                          font-size: .68rem; font-weight: 680; letter-spacing: .02em;
                          cursor: help;}
+    .runa-warning-wrap {position: relative; display: inline-block;}
+    .runa-warning-tooltip {
+        display: none; position: absolute; top: 100%; right: 0; z-index: 100;
+        width: min(320px, 70vw); box-sizing: border-box; padding: .8rem 1rem;
+        border: 1px solid #a68232; border-radius: 10px; background: #2b2518;
+        color: #f4cf75; font-size: .88rem; font-weight: 400; line-height: 1.5;
+        white-space: normal; text-align: left; letter-spacing: normal;
+    }
+    .runa-warning-wrap:hover .runa-warning-tooltip,
+    .runa-warning-wrap:focus-within .runa-warning-tooltip {display: block;}
+    .runa-warning-badge:focus-visible {outline: 2px solid #f4cf75; outline-offset: 2px;}
+    .st-key-photometry_estimated_distance .runa-data-section {overflow: visible;}
+    .runa-spectral-estimate {margin:.45rem 0 .8rem;}
+    .runa-spectral-estimate span {display:block;color:#92929d;font-size:.82rem;
+                                  margin-bottom:.18rem;}
+    .runa-spectral-estimate strong {display:block;color:#f4cf75;font-size:2rem;
+                                    font-weight:620;line-height:1.1;}
+    .runa-distance-flow {display:grid;grid-template-columns:minmax(0,1fr) 24px
+                         minmax(0,1.25fr) 24px minmax(0,1fr);align-items:stretch;
+                         gap:.45rem;margin:.75rem 0 .3rem;}
+    .runa-distance-step {min-width:0;border:1px solid #333338;border-radius:10px;
+                         padding:.85rem .9rem;background:#18181b;}
+    .runa-distance-step small {display:block;color:#92929d;font-size:.72rem;
+                               letter-spacing:.06em;text-transform:uppercase;
+                               margin-bottom:.4rem;}
+    .runa-distance-step strong {display:block;color:#e4e4e7;font-size:1.08rem;
+                                font-weight:570;line-height:1.25;}
+    .runa-distance-step > span:not(.runa-warning-wrap) {display:block;color:#92929d;
+                                font-size:.8rem;line-height:1.35;margin-top:.3rem;}
+    .runa-distance-error {display:inline !important;color:#92929d !important;
+                          font-size:.82em !important;font-weight:430;}
+    .runa-distance-calibration,.runa-distance-result {border-color:#595443;}
+    .runa-distance-calibration strong {color:#f4cf75;}
+    .runa-distance-result strong {color:#f4cf75;font-size:1.72rem;font-weight:620;}
+    .runa-distance-result strong span {display:inline;color:#a1a1aa;font-size:.8rem;
+                                       font-weight:430;}
+    .runa-distance-arrow {align-self:center;justify-self:center;color:#72727c;}
     .runa-volume {border: 1px solid #303037; border-radius: 12px; background: #19191e;
                   padding: .8rem 1rem; margin: .65rem 0 .9rem;}
     .runa-volume-title {color: #f4f4f5; font-size: 1rem; font-weight: 650;
@@ -846,15 +923,43 @@ st.markdown(
     .runa-parameter-section {overflow: hidden; border: 1px solid #2d2d33;
                              border-radius: 12px; margin: 0 0 .7rem;
                              background: #121215;}
+    .runa-parameter-published {border-color: #5d5968; border-radius: 10px;
+                               background: #18181b;}
+    .runa-parameter-estimated {border-color: #595443; border-radius: 10px;
+                               background: #18181b;}
     .runa-parameter-kind {color: #8b8b95; font-size: .68rem; font-weight: 680;
                           letter-spacing: .09em; text-transform: uppercase;
                           padding: .7rem .85rem .35rem;}
-    .runa-parameter-estimated .runa-parameter-kind {color: #6ee7b7;}
+    .runa-parameter-published .runa-parameter-kind {color: #c9c4e8;}
+    .runa-parameter-estimated .runa-parameter-kind {color: #f4cf75;}
     .runa-parameter-row {padding: .55rem .85rem .7rem;}
     .runa-parameter-row + .runa-parameter-row {border-top: 1px solid #28282e;}
     .runa-parameter-label {color: #9a9aa4; font-size: .78rem; margin-bottom: .16rem;}
     .runa-parameter-value {color: #f1f1f3; font-size: 1.12rem; font-weight: 620;
                            line-height: 1.25; font-variant-numeric: tabular-nums;}
+    .runa-parameter-published .runa-parameter-value {color: #c9c4e8;}
+    .runa-parameter-estimated .runa-parameter-value {color: #f4cf75;}
+    .st-key-kinematics_object_card,
+    .st-key-multiplicity_object_card {border-color:#426b5b !important;border-radius:10px !important;background:#18181b;}
+    .st-key-kinematics_object_card .runa-panel-object,
+    .st-key-multiplicity_object_card .runa-panel-object {color:#64dfb4;font-size:1.15rem;font-weight:550;}
+    .st-key-kinematics_object_card .runa-panel-object span,
+    .st-key-multiplicity_object_card .runa-panel-object span {color:#92929d;font-size:.76rem;font-weight:400;letter-spacing:.06em;}
+    .st-key-planets_registered_card {border-color:#5d5968 !important;border-radius:10px !important;background:#18181b;}
+    .st-key-planets_registered_card h3 {color:#c9c4e8;font-size:1.15rem;font-weight:550;}
+    .st-key-planets_object_card {border-color:#426b5b !important;border-radius:10px !important;background:#18181b;}
+    .st-key-planets_object_card .runa-panel-object {color:#64dfb4;font-size:1.15rem;font-weight:550;}
+    .st-key-planets_object_card .runa-panel-object span {color:#92929d;font-size:.76rem;font-weight:400;letter-spacing:.06em;}
+    .st-key-kinematics_membership_card,
+    .st-key-multiplicity_classification_card,
+    .st-key-multiplicity_criteria_card,
+    .st-key-multiplicity_rvs_card {border-color:#595443 !important;border-radius:10px !important;background:#18181b;}
+    .st-key-kinematics_membership_card h3,
+    .st-key-multiplicity_classification_card h3,
+    .st-key-multiplicity_criteria_card h3,
+    .st-key-multiplicity_rvs_card h3 {color:#f4cf75;font-size:1.15rem;font-weight:550;}
+    .st-key-multiplicity_nearby_card {border-color:#5d5968 !important;border-radius:10px !important;background:#18181b;}
+    .st-key-multiplicity_nearby_card h3 {color:#c9c4e8;font-size:1.15rem;font-weight:550;}
     .runa-parameter-error {color: #92929d; font-size: .9rem; font-weight: 430;
                            margin-left: .4rem;}
     .runa-parameter-unit {color: #a4a4ad; font-size: .82rem; font-weight: 430;
@@ -948,7 +1053,62 @@ st.markdown(
     .runa-photometry-missing {color: #777780;}
     .runa-photometry-missing .runa-photometry-catalogue,
     .runa-photometry-missing .runa-band-name {color: #777780;}
+    .runa-identification-head .runa-class-card {
+        border-color: #426b5b; border-radius: 10px;
+        background: #18181b; padding: .9rem 1rem;
+    }
+    .runa-identification-head .runa-class-label {
+        color: #92929d; font-size: .76rem; font-weight: 400;
+        letter-spacing: .06em; margin-bottom: .45rem;
+    }
+    .runa-identification-head .runa-class-value {
+        color: #64dfb4; font-size: 1.35rem; font-weight: 550;
+    }
+    .runa-data-section.runa-result-published {
+        border-color: #5d5968; border-radius: 10px; background: #18181b;
+    }
+    .runa-identification-data.runa-result-published .runa-section-title {
+        color: #c9c4e8; font-size: 1.15rem; font-weight: 550;
+        letter-spacing: normal; text-transform: none;
+        padding: .9rem 1rem .65rem;
+    }
+    .runa-result-published .runa-data-label {color: #e4e4e7; font-weight: 400;}
+    .runa-result-published .runa-data-source,
+    .runa-result-published .runa-data-unit,
+    .runa-result-published .runa-error {color: #92929d;}
+    .st-key-photometry_published_cmd,
+    .st-key-photometry_published_catalogues,
+    .st-key-photometry_published_tess {
+        border-color: #5d5968 !important; border-radius: 10px !important;
+        background: #18181b;
+    }
+    .st-key-photometry_estimated_spectral,
+    .st-key-photometry_estimated_distance {
+        border-color: #595443 !important; border-radius: 10px !important;
+        background: #18181b;
+    }
+    .st-key-photometry_published_catalogues h3,
+    .st-key-photometry_published_tess h3,
+    .st-key-photometry_published_cmd h3 {
+        color: #c9c4e8; font-size: 1.15rem; font-weight: 550;
+    }
+    .st-key-photometry_estimated_spectral h3,
+    .st-key-photometry_estimated_distance h3 {
+        color: #f4cf75; font-size: 1.15rem; font-weight: 550;
+    }
+    .st-key-photometry_published_summary {
+        border-color: #426b5b !important; border-radius: 10px !important;
+        background: #18181b;
+    }
+    .st-key-photometry_published_summary .runa-panel-object {
+        color: #64dfb4; font-size: 1.15rem; font-weight: 550;
+    }
+    .st-key-photometry_published_summary .runa-panel-object span {
+        color: #92929d; font-size: .76rem; font-weight: 400; letter-spacing: .06em;
+    }
     @media (max-width: 700px) {
+        .runa-distance-flow {grid-template-columns:1fr;gap:.4rem;}
+        .runa-distance-arrow {transform:rotate(90deg);}
         .runa-identification-head {grid-template-columns: 1fr; gap: .7rem;}
         .runa-data-row {grid-template-columns: 1fr; gap: .2rem;}
         .runa-neighbour-row {grid-template-columns: 1fr; gap: .2rem;}
@@ -1101,17 +1261,32 @@ if tool in ("Identification", "Data", "Models", "Parameters"):
 else:
     column_widths = [0.62, 1.38] if tool == "Parameters" else [1, 1]
     inputs, results = st.columns(column_widths, gap="small")
-    input_card = inputs.container(border=True, height=160) if tool == "Multiplicity" else inputs.container(border=True)
-    parameters_card = inputs.container(border=True) if tool == "Multiplicity" else None
+    input_card_key = (
+        "photometry_published_summary" if tool == "Photometry" else
+        "kinematics_object_card" if tool == "Kinematics" else
+        "multiplicity_object_card" if tool == "Multiplicity" else
+        "planets_object_card" if tool == "Planets" else None
+    )
+    if tool == "Multiplicity":
+        input_card = inputs.container(border=True, height=160, key=input_card_key)
+    else:
+        input_card = inputs.container(border=True, key=input_card_key)
+    nearby_card = inputs.container(border=True, key="multiplicity_nearby_card") if tool == "Multiplicity" else None
     spectral_type_card = (
-        inputs.container(border=True) if tool == "Photometry" else None
+        inputs.container(border=True, key="photometry_estimated_spectral") if tool == "Photometry" else None
     )
+    cmd_card = results.container() if tool == "Photometry" else None
     additional_catalogue_card = (
-        inputs.container(border=True) if tool == "Photometry" else None
+        results.container(border=True, key="photometry_published_catalogues") if tool == "Photometry" else None
     )
-    classification_card = results.container(border=True, height=160) if tool == "Multiplicity" else None
+    classification_card = results.container(
+        border=True, height=160, key="multiplicity_classification_card"
+    ) if tool == "Multiplicity" else None
+    parameters_card = results.container(border=True, key="multiplicity_criteria_card") if tool == "Multiplicity" else None
     result_card = results.container(
-        border=tool not in ("Photometry", "Parameters")
+        border=tool not in ("Photometry", "Parameters"),
+        key=("kinematics_membership_card" if tool == "Kinematics" else
+             "planets_registered_card" if tool == "Planets" else None),
     )
 
 if tool == "Data":
@@ -1249,7 +1424,7 @@ elif tool == "Identification":
                 )
                 data_section(
                     "Identifiers", identifier_rows,
-                    class_name="runa-identification-data",
+                    class_name="runa-identification-data runa-result-published",
                 )
 
             parallax_text = None
@@ -1321,7 +1496,7 @@ elif tool == "Identification":
                          source_name(star.get("rvz_bibcode")), radial_velocity_error,
                          "km/s"),
                     ],
-                    class_name="runa-identification-data",
+                    class_name="runa-identification-data runa-result-published",
                 )
 
             gaia = star["gaia_photometry"]
@@ -1354,7 +1529,7 @@ elif tool == "Identification":
                         ("Johnson V", f"{v_mag:.3f}" if v_mag is not None else None,
                          "UCAC4", f"{v_error:.3f}" if v_error is not None else None, "mag"),
                     ],
-                    class_name="runa-identification-data",
+                    class_name="runa-identification-data runa-result-published",
                 )
 
             metallicity = None
@@ -1483,21 +1658,24 @@ elif tool == "Photometry":
             except ValueError as error:
                 st.error(f"No estimate was made. {error}")
             else:
-                st.metric("Estimated spectral type", f"M{subtype:.1f}")
+                st.markdown(
+                    '<div class="runa-spectral-estimate">'
+                    '<span>Estimated spectral type</span>'
+                    f'<strong>M{subtype:.1f}</strong></div>',
+                    unsafe_allow_html=True,
+                )
                 st.markdown(
                     f'<div class="runa-spectral-colour">G−J colour: '
                     f'<strong>{color:.2f} mag</strong></div>',
                     unsafe_allow_html=True,
                 )
-                if mode == "Loaded star":
-                    st.caption(f"Estimate for {star['main_id']} from its catalogue magnitudes.")
-                else:
+                if mode == "Manual":
                     st.caption("Manual estimate; the selected RUNA object is unchanged.")
 
                 stars = load_stars()
                 fig, ax = plt.subplots(figsize=(6.5, 4))
-                fig.patch.set_facecolor("#09090b")
-                ax.set_facecolor("#09090b")
+                fig.patch.set_facecolor("#151518")
+                ax.set_facecolor("#151518")
                 ax.scatter(stars["G-J"], stars["SpTnum"], s=12, alpha=0.35, color="#a1a1aa")
                 ax.set_ylim(-0.35, max(5.5, subtype + 0.25))
                 ax.vlines(
@@ -1519,18 +1697,17 @@ elif tool == "Photometry":
                     spine.set_color("#3f3f46")
                     spine.set_zorder(4)
                 ax.legend(
-                    facecolor="#09090b", edgecolor="#3f3f46",
+                    facecolor="#19191e", edgecolor="#3f3f46",
                     labelcolor="#d4d4d8", fontsize=10,
                 )
                 fig.tight_layout()
                 st.pyplot(fig)
                 plt.close(fig)
-                st.caption("Photometric estimate for an ordinary M0–M5.5 dwarf. Confirm with spectroscopy.")
-
-        st.markdown(
-            '<p class="runa-note">Check measurement quality before interpreting the estimate.</p>',
-            unsafe_allow_html=True,
-        )
+                st.caption(
+                    "Photometric estimate for an ordinary M0–M5.5 dwarf. "
+                    "Confirm with spectroscopy and check measurement quality before "
+                    "interpreting the estimate."
+                )
 
     with additional_catalogue_card:
         st.subheader("Additional catalogue photometry")
@@ -1652,8 +1829,8 @@ elif tool == "Photometry":
                     )
 
 
-    with result_card:
-        with st.container(border=True):
+    with cmd_card:
+        with st.container(border=True, key="photometry_published_cmd"):
             st.subheader("Colour–magnitude diagram")
             if star is None:
                 st.write("Choose a star in **Identification** first.")
@@ -1683,7 +1860,7 @@ elif tool == "Photometry":
                     ax.set_xlabel("Gaia BP−RP colour (mag)", fontsize=13)
                     ax.set_ylabel("Absolute Gaia G magnitude (mag)", fontsize=13)
                     ax.invert_yaxis()
-                    ax.grid(color="#3f3f46", alpha=0.28, linewidth=0.6)
+                    ax.grid(False)
                     ax.tick_params(colors="#a1a1aa", labelsize=11)
                     ax.xaxis.label.set_color("#d4d4d8")
                     ax.yaxis.label.set_color("#d4d4d8")
@@ -1702,7 +1879,7 @@ elif tool == "Photometry":
                     )
 
         if star is not None:
-            with st.container(border=True):
+            with inputs.container(border=True, key="photometry_estimated_distance"):
                 st.subheader("Photometric distance")
                 if photometric_distance is None:
                     st.info("Gaia G and 2MASS J are needed for this estimate.")
@@ -1714,38 +1891,11 @@ elif tool == "Photometry":
                         f"({relation['minimum_colour']:.1f}–{relation['maximum_colour']:.1f} mag)."
                     )
                 else:
-                    relation = photometric_distance["relation"]
-                    colour_error = photometric_distance.get("colour_error")
-                    data_section(
-                        "Estimate",
-                        [
-                            (
-                                "Distance",
-                                f"{photometric_distance['distance_pc']:.1f}",
-                                "Cifuentes+20",
-                                "photometric_warning",
-                                "pc",
-                            ),
-                            (
-                                "G−J colour",
-                                f"{photometric_distance['colour']:.3f}",
-                                "Gaia + 2MASS",
-                                f"{colour_error:.3f}"
-                                if colour_error is not None else None,
-                                "mag",
-                            ),
-                            (
-                                "M_G from colour",
-                                f"{photometric_distance['absolute_g']:.2f}",
-                                f"R² = {relation['r_squared']:.4f}",
-                                None,
-                                "mag",
-                            ),
-                        ],
-                    )
+                    photometric_distance_flow(photometric_distance)
 
 
-        with st.container(border=True):
+    with result_card:
+        with st.container(border=True, key="photometry_published_tess"):
             st.subheader("TESS light curve")
             if star is None:
                 st.write("Choose a star in **Identification** first.")
@@ -2324,7 +2474,7 @@ elif tool == "Multiplicity":
                 f'<strong>{escape(str(star["gaia_id"]))}</strong></div>',
                 unsafe_allow_html=True,
             )
-    with result_card:
+    with nearby_card:
         st.write("### Nearby Gaia sources")
         if star is None:
             st.write("Choose a star in **Identification** first.")
@@ -2366,6 +2516,7 @@ elif tool == "Multiplicity":
                 else:
                     st.info("No Gaia sources were found in this radius.")
 
+    values = None
     with parameters_card:
         st.subheader("Multiplicity criteria")
         if query_error:
@@ -2391,9 +2542,12 @@ elif tool == "Multiplicity":
             st.caption("Red: criterion met · Green: criterion not met · Grey: unavailable.")
             st.caption("Source: Cifuentes et al. (2025), Table 3. Missing Gaia values remain unavailable.")
 
-            st.divider()
-            st.subheader("RVS score vs. RUWE")
-            target_rvs_plot = None
+    with results.container(border=True, key="multiplicity_rvs_card"):
+        st.subheader("RVS score vs. RUWE")
+        target_rvs_plot = None
+        if star is None or not star.get("gaia_id") or values is None:
+            st.info("A Gaia DR3 source with multiplicity criteria is needed for this plot.")
+        else:
             try:
                 with st.spinner("Loading Gaia stars within 10 pc..."):
                     rvs_reference = rvs_reference_sample()
@@ -2406,19 +2560,19 @@ elif tool == "Multiplicity":
                 )
             except Exception:
                 st.error("The Gaia RVS comparison sample could not be loaded.")
-            if target_rvs_plot is not None:
-                st.pyplot(target_rvs_plot, use_container_width=True)
-                plt.close(target_rvs_plot)
-                st.caption(
-                    "Light-grey points: Gaia DR3 sources within 10 pc with "
-                    "the three RV measurements available. No parallax S/N cut "
-                    "is applied. Dashed lines mark RUWE = 2 and RVS = 2."
-                )
-            else:
-                st.info(
-                    "An RVS score needs the Gaia RV p-value, renormalised GOF "
-                    "and at least one transit count."
-                )
+        if target_rvs_plot is not None:
+            st.pyplot(target_rvs_plot, use_container_width=True)
+            plt.close(target_rvs_plot)
+            st.caption(
+                "Light-grey points: Gaia DR3 sources within 10 pc with "
+                "the three RV measurements available. No parallax S/N cut "
+                "is applied. Dashed lines mark RUWE = 2 and RVS = 2."
+            )
+        elif star is not None and star.get("gaia_id") and values is not None:
+            st.info(
+                "An RVS score needs the Gaia RV p-value, renormalised GOF "
+                "and at least one transit count."
+            )
 
     st.divider()
     st.caption("Method: the seven Gaia DR3 statistical criteria in Cifuentes et al. (2025), Table 3. Missing values remain unavailable.")
