@@ -1178,10 +1178,13 @@ header_title, header_search = st.columns([1.15, 1], gap="large")
 with header_title:
     st.markdown(
         '<div class="runa-title">RUNA</div>'
-        '<div class="runa-version">v20261022</div>',
+        '<div class="runa-version">v20261026</div>',
         unsafe_allow_html=True,
     )
-    st.write("For stellar characterisation · currently optimised for M dwarfs.")
+    st.write(
+        "For stellar characterisation · currently optimised for M dwarfs · "
+        "expanding to other stellar types and objects."
+    )
 with header_search:
     search_name, search_button = st.columns([2.2, 0.75], gap="small")
     with search_name:
@@ -1195,7 +1198,7 @@ with header_search:
 st.markdown(
     """
     <div class="runa-tools" aria-label="RUNA project details">
-      <span>Python · Streamlit · Astropy · astroquery · scikit-learn · Matplotlib · ADQL/SQL</span>
+      <span>Python · Astropy · astroquery · scikit-learn · Matplotlib · ADQL/SQL · Streamlit</span>
     </div>
     """,
     unsafe_allow_html=True,
@@ -1351,7 +1354,7 @@ elif tool == "Identification":
                 )
                 survey_image = star.get("survey_image")
                 if survey_image is not None:
-                    st.write(f"#### {survey_image['catalogue']} image")
+                    st.write("#### Image (visible)")
                     survey_image_view(survey_image["data"])
                     st.caption(survey_image["caption"])
                 else:
@@ -1362,7 +1365,10 @@ elif tool == "Identification":
                 if polar_fig is not None:
                     st.pyplot(polar_fig, use_container_width=True)
                     plt.close(polar_fig)
-                    st.caption("RA gives the polar angle; the radius is the distance from the Sun in pc.")
+                    st.caption(
+                        "RA gives the polar angle and the radius is the distance from the Sun in pc. "
+                        "The proper-motion arrow shows the change expected over 100,000 years."
+                    )
                     volume = local_volume_status(star)
                     distance_text = f'{volume["distance_pc"]:.3f} pc'
                     if volume["inside_10pc"]:
@@ -1402,19 +1408,11 @@ elif tool == "Identification":
                                 "No match was found in Table C2 of known multiple-system components. "
                                 "This does not by itself establish that the star is single."
                             )
-                    else:
-                        st.markdown(
-                            '<div class="runa-volume">'
-                            '<div class="runa-volume-title">Outside the 10 pc volume</div>'
-                            f'<div class="runa-volume-text">Distance: {distance_text} from the current '
-                            'parallax.</div></div>',
-                            unsafe_allow_html=True,
-                        )
                 else:
                     st.info("A positive parallax and coordinates are needed for the polar view.")
 
             identifier_rows = [
-                ("SIMBAD main ID", star["main_id"], "primary name"),
+                ("SIMBAD ID", star["main_id"], "primary name"),
                 *catalogue_rows(star),
             ]
             with result_right:
@@ -1474,6 +1472,10 @@ elif tool == "Identification":
             coordinate_source = source_name(star.get("coo_bibcode"))
             parallax_source = source_name(star.get("plx_bibcode"))
             motion_source = source_name(star.get("pm_bibcode"))
+            distance_source = (
+                parallax_source if parallax_source == "Gaia DR3"
+                else f"{parallax_source} → Gaia DR3"
+            )
             with result_right:
                 data_section(
                     "Astrometry",
@@ -1484,7 +1486,7 @@ elif tool == "Identification":
                          coordinate_source, dec_error, "mas"),
                         ("Parallax", parallax_text, parallax_source,
                          parallax_error, "mas"),
-                        ("Distance", distance, parallax_source + " · derived",
+                        ("Distance", distance, distance_source,
                          distance_error, "pc"),
                         ("Proper motion RA", f"{star['pmra']:.2f}"
                          if star["pmra"] is not None else None,
@@ -1524,7 +1526,7 @@ elif tool == "Identification":
                         ("Gaia RP", f"{rp_mag:.3f}" if rp_mag is not None else None,
                          "Gaia DR3", f"{rp_error:.4f}" if rp_error else None, "mag"),
                         ("2MASS J", f"{j_mag:.3f}" if j_mag is not None else None,
-                         f"2MASS · Q={j_quality}" if j_quality else "2MASS",
+                         f"2MASS (Q={j_quality})" if j_quality else "2MASS",
                          f"{j_error:.3f}" if j_error is not None else None, "mag"),
                         ("Johnson V", f"{v_mag:.3f}" if v_mag is not None else None,
                          "UCAC4", f"{v_error:.3f}" if v_error is not None else None, "mag"),
@@ -1545,12 +1547,6 @@ elif tool == "Identification":
                 )
 
             with result_left:
-                st.markdown(
-                    '<p class="runa-catalogue-note">Catalogue tags describe the '
-                    'available data source; they are not a physical classification.</p>',
-                    unsafe_allow_html=True,
-                )
-
                 simbad_url = (
                     "https://simbad.cds.unistra.fr/simbad/sim-id?Ident="
                     + quote(star["query_name"])
