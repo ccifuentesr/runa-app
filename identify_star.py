@@ -109,12 +109,13 @@ def lookup_star(name):
 
 
 def lookup_gaia_photometry(gaia_id):
-    """Get Gaia magnitudes by the star's exact DR3 source ID."""
+    """Get Gaia astrometry, observation count and magnitudes by exact DR3 ID."""
     photometry = {}
     if gaia_id and str(gaia_id).isdigit():
         query = (
             "SELECT ra, dec, ref_epoch, pmra, pmdec, pmra_error, pmdec_error, "
             "parallax, parallax_error, "
+            "astrometric_n_obs_al, "
             "phot_g_mean_mag, phot_bp_mean_mag, phot_rp_mean_mag, "
             "phot_g_mean_flux_over_error, phot_bp_mean_flux_over_error, "
             "phot_rp_mean_flux_over_error "
@@ -127,7 +128,7 @@ def lookup_gaia_photometry(gaia_id):
                     "ra", "dec", "ref_epoch", "pmra", "pmdec",
                     "pmra_error", "pmdec_error",
                     "parallax", "parallax_error", "phot_g_mean_mag",
-                    "phot_bp_mean_mag", "phot_rp_mean_mag",
+                    "phot_bp_mean_mag", "phot_rp_mean_mag", "astrometric_n_obs_al",
                 ):
                     value = rows[0][column]
                     photometry[column] = None if np.ma.is_masked(value) else value

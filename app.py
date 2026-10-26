@@ -1,6 +1,8 @@
 """Web interface for RUNA."""
 
 from html import escape
+import json
+from pathlib import Path
 from urllib.parse import quote
 
 import matplotlib.pyplot as plt
@@ -34,7 +36,6 @@ from parameters import (
     mass_from_luminosity_eker,
     mass_from_radius_schweitzer,
     metallicity_from_gaia_wise,
-    photometric_distance_from_gj,
     radius_from_luminosity_temperature,
 )
 from photometry import (
@@ -49,10 +50,12 @@ from position_plots import polar_position_plot
 from predict_star import estimate_subtype
 from models_view import show_models
 from train_model import load_stars
+from multiplicity_model import gaia_feature_row, model_definitions, prepare_training_data
 from vosa_input import build_vosa_input
 from cifuentes20 import load_reference_data, temperature_from_spectral_type
 from local_volume import local_volume_status
 from published_parameters import published_stellar_parameters, published_multiplicity
+from wds import closest_primary_component
 
 
 def data_row(label, value, source=None, error=None, unit=None):
@@ -62,23 +65,10 @@ def data_row(label, value, source=None, error=None, unit=None):
     label_html = label_html.replace("T_eff", "T<sub>eff</sub>")
     error_html = (
         f'<span class="runa-error">({escape(error)})</span>'
-        if error and error != "photometric_warning" else ""
+        if error else ""
     )
     unit_html = escape(unit) if unit else ""
-    if source == "Cifuentes+20" and error == "photometric_warning":
-        source_html = (
-            '<span class="runa-data-source-reference">Cifuentes+20</span>'
-            '<span class="runa-warning-wrap"><button type="button" '
-            'class="runa-warning-badge" aria-describedby="photometric-distance-warning">'
-            'Warning</button><span class="runa-warning-tooltip" role="tooltip" '
-            'id="photometric-distance-warning">Photometric distance only. '
-            'The M_G–(G−J) relation is calibrated for solar-metallicity stars '
-            'with good photometry and negligible extinction. Cifuentes et al. '
-            '(2020) report a median distance accuracy of 36%. Use a '
-            'trigonometric parallax when available.</span></span>'
-        )
-    else:
-        source_html = escape(source) if source else ""
+    source_html = escape(source) if source else ""
     row_class = "runa-data-row" if unit else "runa-data-row runa-data-row-no-unit"
     return (
         f'<div class="{row_class}">'
@@ -104,43 +94,6 @@ def data_section(title, rows, class_name=""):
             f'{title_html}</div>{content}</section>',
             unsafe_allow_html=True,
         )
-
-
-def photometric_distance_flow(result):
-    """Show the inputs, calibration and resulting photometric distance."""
-    colour_error = result.get("colour_error")
-    colour_error_html = (
-        f'<span class="runa-distance-error">({colour_error:.3f})</span>'
-        if colour_error is not None else ""
-    )
-    relation = result["relation"]
-    st.markdown(
-        '<div class="runa-distance-flow" aria-label="Photometric distance workflow">'
-        '<div class="runa-distance-step">'
-        '<small>01 · Input colour</small>'
-        f'<strong>G−J {result["colour"]:.3f} {colour_error_html}</strong>'
-        '<span>Gaia G + 2MASS J · mag</span></div>'
-        '<div class="runa-distance-arrow" aria-hidden="true">→</div>'
-        '<div class="runa-distance-step runa-distance-calibration">'
-        '<small>02 · Calibration</small>'
-        f'<strong>M<sub>G</sub> {result["absolute_g"]:.2f} mag</strong>'
-        '<span>Cifuentes et al. (2020), Table 5 · '
-        f'R² = {relation["r_squared"]:.4f}</span>'
-        '<span class="runa-warning-wrap"><button type="button" '
-        'class="runa-warning-badge" aria-describedby="photometric-distance-warning">'
-        'Warning</button><span class="runa-warning-tooltip" role="tooltip" '
-        'id="photometric-distance-warning">Photometric distance only. '
-        'The M_G–(G−J) relation is calibrated for solar-metallicity stars '
-        'with good photometry and negligible extinction. Cifuentes et al. '
-        '(2020) report a median distance accuracy of 36%. Use a '
-        'trigonometric parallax when available.</span></span></div>'
-        '<div class="runa-distance-arrow" aria-hidden="true">→</div>'
-        '<div class="runa-distance-step runa-distance-result">'
-        '<small>03 · Estimated distance</small>'
-        f'<strong>{result["distance_pc"]:.1f} <span>pc</span></strong>'
-        '<span>Derived from the distance modulus</span></div></div>',
-        unsafe_allow_html=True,
-    )
 
 
 def parameter_section(title, rows, empty_message=None):
@@ -574,6 +527,72 @@ def multiplicity_table(values, criteria):
     st.markdown("".join(rows), unsafe_allow_html=True)
 
 
+MULTIPLICITY_REPORT_FILE = Path(__file__).resolve().parent / "data" / "models" / "multiplicity_evaluation.json"
+
+
+@st.cache_resource(show_spinner=False)
+def load_multiplicity_deployment_model():
+    """Fit the selected classifier on all labelled rows for interactive scoring."""
+    if not MULTIPLICITY_REPORT_FILE.exists():
+        raise FileNotFoundError("The offline multiplicity evaluation report is missing.")
+    report = json.loads(MULTIPLICITY_REPORT_FILE.read_text(encoding="utf-8"))
+    features, target, _, _, _, _ = prepare_training_data()
+    model = model_definitions()[report["selected_model"]]
+    model.fit(features, target)
+    return model, features.columns.tolist(), report.get("decision_threshold", 0.5)
+
+
+def multiplicity_ml_result(values):
+    """Score Gaia DR3 diagnostics and show the classifier's thresholded decision."""
+    astrometric_fields = (
+        "ruwe", "ipd_gof_harmonic_amplitude", "ipd_frac_multi_peak",
+        "duplicated_source",
+    )
+    radial_velocity_fields = (
+        "rv_chisq_pvalue", "rv_renormalised_gof", "rv_nb_transits",
+        "radial_velocity_error",
+    )
+    astrometric_available = sum(values[field] is not None for field in astrometric_fields)
+    radial_velocity_available = sum(values[field] is not None for field in radial_velocity_fields)
+    total_available = astrometric_available + radial_velocity_available
+
+    if total_available == 0:
+        st.warning("Gaia DR3 provides none of the model inputs for this source; no score was produced.")
+        return
+
+    try:
+        with st.spinner("Scoring Gaia DR3 diagnostics..."):
+            model, feature_names, threshold = load_multiplicity_deployment_model()
+            features = gaia_feature_row(values, feature_names)
+            score = float(model.predict_proba(features)[0, 1])
+    except FileNotFoundError:
+        st.warning("The evaluated multiplicity model is not available yet.")
+        return
+    except (KeyError, ValueError) as error:
+        st.error(f"The model could not score this source: {error}")
+        return
+
+    is_unresolved = score >= threshold
+    score_col, decision_col = st.columns(2)
+    score_col.metric("Unresolved-binary score", f"{score:.2f}")
+    decision_col.markdown(
+        '<div class="runa-model-decision">'
+        f'<div class="runa-model-decision-label">Model decision · cut {threshold:.2f}</div>'
+        f'<div class="runa-model-decision-value">{"Yes" if is_unresolved else "No"}</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+    st.progress(score, text="Score toward the close-unresolved class")
+    st.markdown(
+        f'<div class="runa-model-coverage">Score based on '
+        f'{total_available}/8 available Gaia diagnostics.</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "This model targets close unresolved components. A ‘No’ does not rule out a companion."
+    )
+
+
 def radius_label(radius_arcsec):
     """Show a nearby-source radius in the unit used by the selector."""
     if radius_arcsec < 60:
@@ -709,6 +728,12 @@ def multiplicity_criteria(gaia_id):
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
+def wds_closest_component(ra, dec):
+    """Keep the SIMBAD-position WDS cross-match for one day."""
+    return closest_primary_component(ra, dec)
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
 def rvs_reference_sample():
     """Keep the ten-parsec Gaia RV comparison sample for one day."""
     return query_rvs_reference()
@@ -749,23 +774,20 @@ st.markdown(
     .runa-filter-reference {color: #a1a1aa; font-size: .875rem;
                             line-height: 1.4; margin: 0 0 .65rem;}
     .runa-data-source-reference {display: block;}
-    .runa-warning-badge {display: inline-flex; align-items: center; margin-top: .24rem;
-                         padding: .1rem .4rem; border: 1px solid #a68232;
-                         border-radius: 999px; color: #f4cf75; background: #2b2518;
-                         font-size: .68rem; font-weight: 680; letter-spacing: .02em;
-                         cursor: help;}
-    .runa-warning-wrap {position: relative; display: inline-block;}
+    .runa-warning-toggle {position:absolute; opacity:0; pointer-events:none;}
+    .runa-warning-badge {display:inline; margin-left:.25rem; padding:0;
+                         border:0; color:#f4cf75; background:transparent;
+                         font-size:.78rem; font-weight:600; cursor:pointer;}
     .runa-warning-tooltip {
-        display: none; position: absolute; top: 100%; right: 0; z-index: 100;
-        width: min(320px, 70vw); box-sizing: border-box; padding: .8rem 1rem;
-        border: 1px solid #a68232; border-radius: 10px; background: #2b2518;
+        display: block; box-sizing: border-box; margin-top: .45rem; padding: .7rem .85rem;
+        border: 1px solid #4b4226; border-radius: 8px; background: #111114;
         color: #f4cf75; font-size: .88rem; font-weight: 400; line-height: 1.5;
         white-space: normal; text-align: left; letter-spacing: normal;
     }
-    .runa-warning-wrap:hover .runa-warning-tooltip,
-    .runa-warning-wrap:focus-within .runa-warning-tooltip {display: block;}
+    .runa-warning-toggle:not(:checked) ~ .runa-warning-tooltip {display: none;}
     .runa-warning-badge:focus-visible {outline: 2px solid #f4cf75; outline-offset: 2px;}
-    .st-key-photometry_estimated_distance .runa-data-section {overflow: visible;}
+    .st-key-photometry_estimated_distance .runa-data-section,
+    .st-key-photometry_estimated_distance .runa-parameter-section {overflow: visible;}
     .runa-spectral-estimate {margin:.45rem 0 .8rem;}
     .runa-spectral-estimate span {display:block;color:#92929d;font-size:.82rem;
                                   margin-bottom:.18rem;}
@@ -939,6 +961,10 @@ st.markdown(
                            line-height: 1.25; font-variant-numeric: tabular-nums;}
     .runa-parameter-published .runa-parameter-value {color: #c9c4e8;}
     .runa-parameter-estimated .runa-parameter-value {color: #f4cf75;}
+    .runa-parameter-estimated .runa-photometric-distance-input .runa-parameter-value {
+        color: #f1f1f3;
+    }
+    .runa-photometric-distance-value {font-size: 1.72rem; line-height: 1.12;}
     .st-key-kinematics_object_card,
     .st-key-multiplicity_object_card {border-color:#426b5b !important;border-radius:10px !important;background:#18181b;}
     .st-key-kinematics_object_card .runa-panel-object,
@@ -951,13 +977,22 @@ st.markdown(
     .st-key-planets_object_card .runa-panel-object {color:#64dfb4;font-size:1.15rem;font-weight:550;}
     .st-key-planets_object_card .runa-panel-object span {color:#92929d;font-size:.76rem;font-weight:400;letter-spacing:.06em;}
     .st-key-kinematics_membership_card,
-    .st-key-multiplicity_classification_card,
-    .st-key-multiplicity_criteria_card,
+    .st-key-multiplicity_prediction_card,
     .st-key-multiplicity_rvs_card {border-color:#595443 !important;border-radius:10px !important;background:#18181b;}
     .st-key-kinematics_membership_card h3,
-    .st-key-multiplicity_classification_card h3,
-    .st-key-multiplicity_criteria_card h3,
+    .st-key-multiplicity_prediction_card h3,
     .st-key-multiplicity_rvs_card h3 {color:#f4cf75;font-size:1.15rem;font-weight:550;}
+    .runa-ml-draft-status {margin:.1rem 0 .8rem;padding:.8rem .9rem;border:1px solid #4b4226;border-radius:8px;background:#121215;}
+    .runa-ml-draft-status small {display:block;color:#92929d;font-size:.72rem;letter-spacing:.06em;margin-bottom:.25rem;}
+    .runa-ml-draft-status strong {display:block;color:#f4cf75;font-size:1rem;font-weight:570;}
+    .runa-ml-draft-status span {display:block;color:#b7b7c0;font-size:.86rem;line-height:1.4;margin-top:.35rem;}
+    .runa-model-decision {padding-top:.15rem;}
+    .runa-model-decision-label {color:#92929d;font-size:.82rem;line-height:1.3;}
+    .runa-model-decision-value {color:#f4cf75;font-size:1.75rem;font-weight:600;line-height:1.25;}
+    .runa-model-coverage {color:#f1f1f3;font-size:1rem;font-weight:560;line-height:1.4;margin:.55rem 0 .35rem;}
+    .st-key-kinematics_membership_card .runa-large-metric-label,
+    .st-key-kinematics_membership_card .runa-large-metric-value {color:#f4cf75;}
+    .st-key-kinematics_membership_card .runa-large-metric-label {color:#92929d;}
     .st-key-multiplicity_nearby_card {border-color:#5d5968 !important;border-radius:10px !important;background:#18181b;}
     .st-key-multiplicity_nearby_card h3 {color:#c9c4e8;font-size:1.15rem;font-weight:550;}
     .runa-parameter-error {color: #92929d; font-size: .9rem; font-weight: 430;
@@ -1256,7 +1291,6 @@ if search_error:
 
 if tool in ("Identification", "Data", "Models", "Parameters"):
     input_card = None
-    parameters_card = None
     result_card = (
         st.container(border=tool == "Identification")
         if tool not in ("Data", "Models") else None
@@ -1271,7 +1305,7 @@ else:
         "planets_object_card" if tool == "Planets" else None
     )
     if tool == "Multiplicity":
-        input_card = inputs.container(border=True, height=160, key=input_card_key)
+        input_card = inputs.container(border=True, key=input_card_key)
     else:
         input_card = inputs.container(border=True, key=input_card_key)
     nearby_card = inputs.container(border=True, key="multiplicity_nearby_card") if tool == "Multiplicity" else None
@@ -1282,11 +1316,10 @@ else:
     additional_catalogue_card = (
         results.container(border=True, key="photometry_published_catalogues") if tool == "Photometry" else None
     )
-    classification_card = results.container(
-        border=True, height=160, key="multiplicity_classification_card"
+    prediction_card = results.container(
+        border=True, key="multiplicity_prediction_card"
     ) if tool == "Multiplicity" else None
-    parameters_card = results.container(border=True, key="multiplicity_criteria_card") if tool == "Multiplicity" else None
-    result_card = results.container(
+    result_card = None if tool == "Multiplicity" else results.container(
         border=tool not in ("Photometry", "Parameters"),
         key=("kinematics_membership_card" if tool == "Kinematics" else
              "planets_registered_card" if tool == "Planets" else None),
@@ -1560,16 +1593,8 @@ elif tool == "Identification":
 elif tool == "Photometry":
     position = star_cmd_position(star) if star is not None else None
     photometry_parameters = calculate_parameters(star) if star is not None else None
-    photometric_distance = None
-    if star is not None:
-        gaia = star.get("gaia_photometry", {})
-        twomass = star.get("twomass_photometry", {})
-        photometric_distance = photometric_distance_from_gj(
-            gaia.get("phot_g_mean_mag"),
-            gaia.get("phot_g_mean_mag_error"),
-            twomass.get("j_mag"),
-            twomass.get("j_error"),
-        )
+    gaia = star.get("gaia_photometry", {}) if star is not None else {}
+    twomass = star.get("twomass_photometry", {}) if star is not None else {}
 
     with input_card:
         object_panel_title(star)
@@ -1608,6 +1633,10 @@ elif tool == "Photometry":
 
     with spectral_type_card:
         st.subheader("Spectral type estimation")
+        st.caption(
+            "Training, model comparison and validation details: see Models → "
+            "Spectral type estimation."
+        )
         mode = st.radio(
             "Mode", ["Loaded star", "Manual"], horizontal=True,
             key="spectral_input_source", label_visibility="collapsed",
@@ -1874,22 +1903,6 @@ elif tool == "Photometry":
                         "RUWE < 1.4, more than eight visibility periods and high-S/N G, BP and RP photometry."
                     )
 
-        if star is not None:
-            with inputs.container(border=True, key="photometry_estimated_distance"):
-                st.subheader("Photometric distance")
-                if photometric_distance is None:
-                    st.info("Gaia G and 2MASS J are needed for this estimate.")
-                elif not photometric_distance["in_range"]:
-                    relation = photometric_distance["relation"]
-                    st.info(
-                        f"The G−J colour ({photometric_distance['colour']:.2f} mag) is "
-                        f"outside the calibration range "
-                        f"({relation['minimum_colour']:.1f}–{relation['maximum_colour']:.1f} mag)."
-                    )
-                else:
-                    photometric_distance_flow(photometric_distance)
-
-
     with result_card:
         with st.container(border=True, key="photometry_published_tess"):
             st.subheader("TESS light curve")
@@ -1926,13 +1939,6 @@ elif tool == "Photometry":
                             "The y-axis follows the median and robust scatter, so isolated "
                             "peaks do not dominate the view. This is not a transit fit."
                         )
-    st.divider()
-    st.caption(
-        "Method: BP−RP colour and M_G = G + 5 log10(parallax) − 10, "
-        "with parallax in milliarcseconds. Photometric distance uses M_G versus G−J "
-        "from Cifuentes et al. (2020), with no extinction correction."
-    )
-
 elif tool == "Parameters":
     parameters = calculate_parameters(star) if star is not None else None
     published_parameters = published_stellar_parameters(star)
@@ -2050,9 +2056,9 @@ elif tool == "Parameters":
             st.info("Choose a star in **Identification** first.")
             stellar_parameter_table([
                 ("Luminosity", "L☉", [], []),
-                ("Mass", "M☉", [], []),
-                ("Radius", "R☉", [], []),
                 ("Effective temperature", "K", [], []),
+                ("Radius", "R☉", [], []),
+                ("Mass", "M☉", [], []),
                 ("Metallicity", "dex", [], []),
             ])
         else:
@@ -2196,9 +2202,9 @@ elif tool == "Parameters":
             object_panel_title(star)
             stellar_parameter_table([
                 ("Luminosity", "L☉", luminosity_rows, luminosity_estimates),
-                ("Mass", "M☉", mass_rows, mass_estimates),
-                ("Radius", "R☉", radius_rows, radius_estimates),
                 ("Effective temperature", "K", temperature_rows, temperature_estimates),
+                ("Radius", "R☉", radius_rows, radius_estimates),
+                ("Mass", "M☉", mass_rows, mass_estimates),
                 ("Metallicity", "dex", metallicity_rows, metallicity_estimates),
             ])
             if catalogue_records is None:
@@ -2430,34 +2436,6 @@ elif tool == "Multiplicity":
         except Exception:
             query_error = "The Gaia query failed. Please try again later."
 
-    with classification_card:
-        panel_heading("Multiplicity")
-        catalogue_multiplicity = published_multiplicity(star)
-        if star is None:
-            st.caption("Load an object in Identification first.")
-        elif catalogue_multiplicity and catalogue_multiplicity["type"].startswith("Multiple"):
-            st.subheader("Known multiple")
-            sb = catalogue_multiplicity["sb"]
-            st.caption(
-                f"Spectroscopic classification: {sb}." if sb
-                else "No spectroscopic-binary classification reported."
-            )
-            st.caption(catalogue_multiplicity["reference"])
-        elif (answer and any(answer[1][number] for number in (1, 2, 3, 4, 5, 7))) or (
-            catalogue_multiplicity and catalogue_multiplicity["candidate"]
-        ):
-            st.subheader("Candidate")
-            st.caption("Multiplicity candidate based on Gaia DR3 indicators.")
-        elif answer is not None and any(value is not None for value in answer[1].values()):
-            st.subheader("Single")
-            st.caption(
-                "No strong Gaia DR3 indicator detected. Without spectroscopic "
-                "analysis, an unresolved binary remains possible."
-            )
-        else:
-            st.subheader("Not assessed")
-            st.caption("Insufficient Gaia DR3 data to assess multiplicity.")
-
     with input_card:
         object_panel_title(star)
         if star is None:
@@ -2469,6 +2447,17 @@ elif tool == "Multiplicity":
                 f'<div class="runa-gaia-id">Gaia DR3 ID: '
                 f'<strong>{escape(str(star["gaia_id"]))}</strong></div>',
                 unsafe_allow_html=True,
+            )
+            n_obs_al = (star.get("gaia_photometry") or {}).get("astrometric_n_obs_al")
+            try:
+                n_obs_al = int(n_obs_al) if n_obs_al is not None else None
+            except (OverflowError, TypeError, ValueError):
+                n_obs_al = None
+            observation_count = f"{n_obs_al:,}" if n_obs_al is not None else "Unavailable"
+            st.markdown(f"**Astrometric observations (AL):** {observation_count}")
+            st.caption(
+                "Gaia DR3 astrometric_n_obs_al: CCD-level along-scan observations "
+                "used in the astrometric solution."
             )
     with nearby_card:
         st.write("### Nearby Gaia sources")
@@ -2513,30 +2502,74 @@ elif tool == "Multiplicity":
                     st.info("No Gaia sources were found in this radius.")
 
     values = None
-    with parameters_card:
-        st.subheader("Multiplicity criteria")
+    catalogue_multiplicity = published_multiplicity(star)
+    with prediction_card:
+        st.subheader("Multiplicity prediction")
+        st.caption(
+            "Training, feature selection and validation details: see Models → "
+            "Unresolved binarity analysis."
+        )
         if query_error:
             st.error(query_error)
         elif star is None:
             st.write("Choose a star in **Identification** first.")
         elif not star["gaia_id"]:
-            st.write("A Gaia DR3 ID is needed for these indicators.")
+            st.write("A Gaia DR3 ID is needed to score this source.")
         else:
-            values, criteria = answer
-            multiplicity_table(values, criteria)
-
-            strong_indicators = any(criteria[number] for number in (1, 2, 3, 4, 5, 7))
-            if strong_indicators:
-                st.write("**One or more multiplicity indicators are met.**")
-            elif criteria[6]:
-                st.write("**Only the supporting duplicated-source flag is met.**")
-            elif all(result is None for result in criteria.values()):
-                st.write("**Gaia has no values for these criteria.**")
+            values, _ = answer
+            multiplicity_ml_result(values)
+        with st.expander("Multiplicity criteria", expanded=False):
+            st.caption("Based on Cifuentes et al. (2025), Table 3.")
+            if query_error:
+                st.error(query_error)
+            elif star is None:
+                st.write("Choose a star in **Identification** first.")
+            elif not star["gaia_id"]:
+                st.write("A Gaia DR3 ID is needed for these indicators.")
             else:
-                st.write("**No available criterion is met.**")
-            st.caption("These indicators suggest possible multiplicity; they do not confirm a companion.")
-            st.caption("Red: criterion met · Green: criterion not met · Grey: unavailable.")
-            st.caption("Source: Cifuentes et al. (2025), Table 3. Missing Gaia values remain unavailable.")
+                values, criteria = answer
+                strong_indicators = any(criteria[number] for number in (1, 2, 3, 4, 5, 7))
+                if strong_indicators:
+                    st.write("**One or more multiplicity indicators are met.**")
+                elif criteria[6]:
+                    st.write("**Only the supporting duplicated-source flag is met.**")
+                elif all(result is None for result in criteria.values()):
+                    st.write("**Gaia has no values for these criteria.**")
+                else:
+                    st.write("**No available criterion is met.**")
+                multiplicity_table(values, criteria)
+                st.caption(
+                    "These indicators suggest possible multiplicity, but do not confirm a companion."
+                )
+
+        if catalogue_multiplicity and catalogue_multiplicity["type"].startswith("Multiple"):
+            st.divider()
+            st.markdown("**Known multiple in Cifuentes et al. (2025)**")
+            sb = catalogue_multiplicity["sb"]
+            st.caption(
+                f"Spectroscopic classification: {sb}." if sb
+                else "No spectroscopic-binary classification reported."
+            )
+            try:
+                with st.spinner("Checking the WDS record..."):
+                    wds_pair = wds_closest_component(star.get("ra"), star.get("dec"))
+                if wds_pair:
+                    discoverer = wds_pair["discoverer"]
+                    discoverer_text = f" (Discoverer {discoverer} in WDS)" if discoverer else " (WDS)"
+                    st.markdown(
+                        "**Projected separation of the closest component:** "
+                        f"{wds_pair['separation_arcsec']:.1f} arcsec{discoverer_text}."
+                    )
+                    st.caption("Please review manually: the WDS match may be incorrect.")
+                else:
+                    st.caption(
+                        "No WDS separation involving component A was found near "
+                        "the SIMBAD position. Please review the match manually."
+                    )
+            except Exception:
+                st.caption(
+                    "WDS separation unavailable. Please review the WDS match manually."
+                )
 
     with results.container(border=True, key="multiplicity_rvs_card"):
         st.subheader("RVS score vs. RUWE")

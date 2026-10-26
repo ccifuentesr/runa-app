@@ -42,6 +42,10 @@ Shows Gaia colour–magnitude context, retrieves GALEX, SDSS9, UCAC4, 2MASS, All
 
 Estimates an M-dwarf subtype from Gaia G and 2MASS J photometry with a quadratic colour model trained on selected M0–M5.5 stars. `train_model.py` reserves a stratified 20% test set and compares this two-band model with a random forest using G−J and J−W2. The deployed estimator keeps the two-band model because its inputs are inspectable and it works when W2 is unavailable. The result is a photometric estimate, not a replacement for spectroscopy.
 
+### Models
+
+Documents the offline evaluation of the spectral-type estimator and its training-data selection. It also evaluates a Gaia-based classifier trained on confirmed close unresolved components, identified by the Cifuentes et al. (2025) nomenclature, and on `Single` category 1–2 controls. Resolved systems, `Single` category 3 rows and Gaia candidates are outside the supervised target. Components receive separate labels but their systems remain together during validation. Multiplicity applies the selected classifier to the loaded Gaia DR3 diagnostics and shows an uncalibrated score plus a decision at the validation threshold. Internal metrics do not establish external performance or confirm a companion.
+
 ### Parameters
 
 **Status: In preparation.** Calculates absolute magnitudes and displays matched published bolometric luminosities from [Cifuentes et al. (2020)](https://doi.org/10.1051/0004-6361/202038295) and [Cifuentes et al. (2025)](https://ui.adsabs.harvard.edu/abs/2025A%26A...693A.228C/abstract). When applicable, it estimates mass from the main-sequence mass–luminosity relation of [Eker et al. (2018)](https://doi.org/10.1093/mnras/sty1834), without extrapolating outside its published intervals. It also includes an experimental Gaia/WISE photometric metallicity estimate based on [Duque-Arribas et al. (2023)](https://doi.org/10.3847/1538-4357/acacf6).
@@ -52,7 +56,7 @@ Estimates an M-dwarf subtype from Gaia G and 2MASS J photometry with a quadratic
 
 ### Multiplicity
 
-Applies the seven Gaia DR3 statistical indicators from Cifuentes et al. (2025, Table 3), visualises RVS score against RUWE, and retrieves nearby Gaia sources for visual inspection. These are indicators for follow-up, not a binary confirmation.
+Applies the seven Gaia DR3 statistical indicators from Cifuentes et al. (2025, Table 3), scores the loaded source for close unresolved multiplicity, visualises RVS score against RUWE, and retrieves nearby Gaia sources for visual inspection. The model score is not a calibrated probability or binary confirmation.
 
 ### Planets
 
@@ -70,6 +74,8 @@ identify_star.py          SIMBAD, Gaia, 2MASS, UCAC4 and SDSS retrieval
 photometry.py             Catalogue photometry, CMD and SED tools
 predict_star.py           Two-band spectral-type estimator
 train_model.py            Reproducible model comparison
+multiplicity_model.py     Multiplicity data preparation and model definitions
+evaluate_multiplicity_models.py  Grouped multiplicity-model evaluation
 parameters.py             Magnitudes, luminosity, metallicity and mass relations
 multiplicity.py           Gaia DR3 multiplicity indicators
 kinematics.py             Coordinate propagation and BANYAN Σ inputs

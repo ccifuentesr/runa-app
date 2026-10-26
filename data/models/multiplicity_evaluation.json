@@ -1,0 +1,113 @@
+{
+  "purpose": "Internal grouped validation for distinguishing confirmed close unresolved components from spectroscopically confirmed singles. This is not external validation or binary confirmation for a new object.",
+  "sklearn_version": "1.6.0",
+  "random_state": 42,
+  "preparation": {
+    "catalogue_rows": 2634,
+    "labelled_rows_before_feature_filter": 644,
+    "confirmed_close_positive_before_feature_filter": 366,
+    "confirmed_single_negative_before_feature_filter": 278,
+    "resolved_multiple_context_rows": 839,
+    "unconfirmed_single_inference_rows": 824,
+    "candidate_inference_rows": 327,
+    "excluded_all_features_missing": 0,
+    "training_rows": 644,
+    "confirmed_close_positive_rows": 366,
+    "confirmed_single_negative_rows": 278,
+    "validation_groups": 630,
+    "feature_completeness": {
+      "ruwe": 0.8416149068322981,
+      "ipd_harmonic_amplitude": 0.9968944099378882,
+      "ipd_multi_peak_fraction": 0.9984472049689441,
+      "rv_chisq_pvalue": 0.7251552795031055,
+      "rv_renormalised_gof": 0.7220496894409938,
+      "rv_transits": 0.7422360248447205,
+      "radial_velocity_error": 0.9425465838509317,
+      "duplicated_source": 0.9968944099378882
+    },
+    "selected_features": [
+      "ruwe",
+      "ipd_harmonic_amplitude",
+      "ipd_multi_peak_fraction",
+      "rv_chisq_pvalue",
+      "rv_renormalised_gof",
+      "rv_transits",
+      "radial_velocity_error",
+      "duplicated_source"
+    ]
+  },
+  "feature_selection": {
+    "rule": "Keep raw Gaia features with at least 5% non-missing values.",
+    "excluded": [
+      "Gaia non-single-star flag: unavailable as a complete raw field in the local catalogue."
+    ]
+  },
+  "validation": {
+    "outer_split": "One 80/20 StratifiedGroupKFold split. Each IDsystem>0 system stays together; each IDsystem=0 star is an independent group.",
+    "model_comparison": "Four-fold StratifiedGroupKFold on the training partition.",
+    "selection_metric": "Mean grouped CV F1, then mean ROC AUC.",
+    "test_rows": 128,
+    "test_groups": 126,
+    "test_multiple_fraction": 0.5625
+  },
+  "comparison": [
+    {
+      "model": "Random forest",
+      "folds": 4,
+      "balanced_accuracy_mean": 0.925652647725289,
+      "balanced_accuracy_std": 0.02282543518850548,
+      "precision_mean": 0.9486759210807314,
+      "precision_std": 0.035454660702566636,
+      "recall_mean": 0.9185130876583704,
+      "recall_std": 0.03366055757911777,
+      "f1_mean": 0.9324586948419311,
+      "f1_std": 0.019658788288174776,
+      "roc_auc_mean": 0.9664549033511989,
+      "roc_auc_std": 0.01192613324837293,
+      "average_precision_mean": 0.980388739094777,
+      "average_precision_std": 0.005295208623757925
+    },
+    {
+      "model": "Logistic regression",
+      "folds": 4,
+      "balanced_accuracy_mean": 0.9042850675034014,
+      "balanced_accuracy_std": 0.029599847962555447,
+      "precision_mean": 0.9491482028874254,
+      "precision_std": 0.027374690133551833,
+      "recall_mean": 0.8714759791626472,
+      "recall_std": 0.06534045911599086,
+      "f1_mean": 0.9067571182006293,
+      "f1_std": 0.0348312056712028,
+      "roc_auc_mean": 0.9554292650882463,
+      "roc_auc_std": 0.011588523044498296,
+      "average_precision_mean": 0.9742541727196525,
+      "average_precision_std": 0.007287812512689209
+    },
+    {
+      "model": "Prior baseline",
+      "folds": 4,
+      "balanced_accuracy_mean": 0.5,
+      "balanced_accuracy_std": 0.0,
+      "precision_mean": 0.5697024447506946,
+      "precision_std": 0.006591826709141035,
+      "recall_mean": 1.0,
+      "recall_std": 0.0,
+      "f1_mean": 0.7258506333136734,
+      "f1_std": 0.005366652474307738,
+      "roc_auc_mean": 0.5,
+      "roc_auc_std": 0.0,
+      "average_precision_mean": 0.5697024447506946,
+      "average_precision_std": 0.006591826709141035
+    }
+  ],
+  "selected_model": "Random forest",
+  "decision_threshold": 0.5,
+  "held_out_test": {
+    "balanced_accuracy": 0.8928571428571428,
+    "precision": 0.9264705882352942,
+    "recall": 0.875,
+    "f1": 0.9,
+    "roc_auc": 0.9551091269841271,
+    "average_precision": 0.9713432295721374
+  }
+}

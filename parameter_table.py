@@ -75,9 +75,9 @@ def estimated_parameters_csv(groups):
     }
     export_order = {
         "Luminosity": 0,
-        "Radius": 1,
-        "Mass": 2,
-        "Effective temperature": 3,
+        "Effective temperature": 1,
+        "Radius": 2,
+        "Mass": 3,
         "Metallicity": 4,
     }
     output = StringIO()
@@ -216,6 +216,9 @@ def stellar_parameter_table(groups):
         'color:#c9c4e8;font-size:1.15rem;font-weight:550;letter-spacing:.04em;}'
         '.st-key-parameters_estimated .runa-panel-heading {'
         'color:#f4cf75;font-size:1.15rem;font-weight:550;letter-spacing:.04em;}'
+        '.st-key-parameters_estimated [data-testid="stWidgetLabel"] {display:none;}'
+        '.st-key-parameters_estimated [data-testid="stRadio"] {'
+        'margin-top:-.45rem;margin-bottom:-.85rem;}'
         '.st-key-parameters_published .parameter-number {color:#c9c4e8;}'
         '.st-key-parameters_estimated .parameter-number {color:#f4cf75;}'
         '</style>',
@@ -225,15 +228,21 @@ def stellar_parameter_table(groups):
     for column, title, row_index in zip(columns, ("Published", "Estimated"), (2, 3)):
         with column:
             with st.container(border=True, key=f"parameters_{title.lower()}"):
-                panel_heading(title)
                 displayed_groups = groups
                 if title == "Estimated":
-                    mode = st.radio(
-                        "Mode", ["Loaded star", "Manual"], horizontal=True,
-                        key="parameters_estimation_mode",
-                    )
+                    heading_column, mode_column = st.columns((0.82, 1.18), gap="small")
+                    with heading_column:
+                        panel_heading(title)
+                    with mode_column:
+                        mode = st.radio(
+                            "Mode", ["Loaded star", "Manual"], horizontal=True,
+                            label_visibility="collapsed",
+                            key="parameters_estimation_mode",
+                        )
                     if mode == "Manual":
                         displayed_groups = manual_parameter_groups()
+                else:
+                    panel_heading(title)
                 for group in displayed_groups:
                     name, unit = group[:2]
                     unit_html = escape(unit)

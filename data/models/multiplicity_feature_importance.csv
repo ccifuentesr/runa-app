@@ -1,0 +1,9 @@
+feature,importance
+ruwe,0.28670455793744215
+rv_renormalised_gof,0.2614301804307867
+rv_chisq_pvalue,0.11275740053112113
+radial_velocity_error,0.11263773469025543
+ipd_multi_peak_fraction,0.0955899422262898
+ipd_harmonic_amplitude,0.0509484373474262
+rv_transits,0.012647362164607242
+duplicated_source,0.00010474066546529688
