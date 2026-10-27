@@ -528,6 +528,16 @@ def planet_orbit_figure(planets):
     figure.patch.set_facecolor("#18181b")
     masses = [orbital_mass(planet)[0] for _, _, planet in orbits]
     largest_mass = max((mass for mass in masses if mass is not None), default=1.0)
+    def planet_radius(planet):
+        try:
+            radius = float(planet.get("pl_rade"))
+        except (TypeError, ValueError):
+            return None
+        return radius if math.isfinite(radius) and radius > 0 else None
+
+    radii = [planet_radius(planet) for _, _, planet in orbits
+             if orbital_mass(planet)[0] is None]
+    largest_radius = max((radius for radius in radii if radius is not None), default=1.0)
     angles = np.linspace(0, 2 * np.pi, 361)
     for axis_plot, (title, orbit_set) in zip(axes, panels):
         axis_plot.set_facecolor("#18181b")
@@ -535,7 +545,7 @@ def planet_orbit_figure(planets):
             e = eccentricity if eccentricity is not None else 0.0
             x = axis * (np.cos(angles) - e)
             y = axis * np.sqrt(1 - e * e) * np.sin(angles)
-            color = "#c4a7e7" if planet.get("status") == "Confirmed" else "#f4cf75"
+            color = "#86cfa5" if planet.get("status") == "Confirmed" else "#f4cf75"
             axis_plot.plot(
                 x, y, color=color, linewidth=.7,
                 linestyle="-" if eccentricity is not None else "--", alpha=.9,
@@ -547,18 +557,23 @@ def planet_orbit_figure(planets):
             if mass is not None:
                 # Matplotlib's scatter size is an area; keep area proportional
                 # to mass with one shared scale across both orbital panels.
-                axis_plot.scatter(
-                    [label_x], [label_y], s=150 * mass / largest_mass,
-                    facecolors="none" if mass_kind == "minimum" else "#c4a7e7",
-                    edgecolors="#c4a7e7", linewidths=1.15, zorder=4,
-                )
+                marker_area = 150 * mass / largest_mass
             else:
-                axis_plot.scatter([label_x], [label_y], s=20, marker="x",
-                                  color="#c4a7e7", linewidths=.9, zorder=4)
+                radius = planet_radius(planet)
+                # Radius scales the marker radius; mass and radius use separate scales.
+                marker_area = 150 * (radius / largest_radius) ** 2 if radius else 36
+            axis_plot.scatter(
+                [label_x], [label_y], s=marker_area, marker="o",
+                facecolors=color if mass_kind == "mass" else "#18181b",
+                edgecolors=color, linewidths=1.15, zorder=4,
+            )
             label = str(planet.get("pl_name") or "").split()[-1]
             axis_plot.annotate(
-                label, (label_x, label_y), xytext=(9, 6), textcoords="offset points",
+                label, (label_x, label_y),
+                xytext=(14 * np.cos(label_angle), 14 * np.sin(label_angle)),
+                textcoords="offset points", ha="center", va="center",
                 color=color, fontsize=8.5, fontweight="medium",
+                bbox=dict(facecolor="#18181b", edgecolor="none", pad=1.8), zorder=6,
             )
         axis_plot.scatter([0], [0], s=130, marker="*", c="#f4cf75", zorder=5)
         limit = max(axis * (1 + (e or 0)) for axis, e, _ in orbit_set) * 1.19
@@ -688,7 +703,7 @@ def multiplicity_ml_result(values):
     st.progress(score, text="Score toward the close-unresolved class")
     st.markdown(
         f'<div class="runa-model-coverage">Score based on '
-        f'{total_available}/8 available Gaia diagnostics.</div>',
+        f'<span style="color:#86cfa5">{total_available}/8</span> available Gaia diagnostics.</div>',
         unsafe_allow_html=True,
     )
     st.caption(
@@ -837,9 +852,9 @@ def multiplicity_criteria(gaia_id):
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def wds_closest_component(ra, dec):
-    """Keep the SIMBAD-position WDS cross-match for one day."""
-    return closest_primary_component(ra, dec)
+def wds_closest_component(ra, dec, identifiers):
+    """Cache WDS separation and last observation year for one day."""
+    return closest_primary_component(ra, dec, identifiers)
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -2524,9 +2539,10 @@ elif tool == "Planets":
                         "The star is at one focus; orientation and planet positions are illustrative. "
                         "A dashed circle means eccentricity is unavailable."
                     )
-                    st.caption("Lilac circles: area proportional to mass · open: M sin i · "
-                               "filled: mass determined · ×: mass unavailable or only a limit. "
-                               "Candidate orbits remain yellow.")
+                    st.caption("Green: confirmed · yellow: unconfirmed. Coloured fill: measured mass; "
+                               "dark fill: minimum or unavailable mass. Circle area is proportional to planet mass; "
+                               "when mass is unavailable, circle radius is proportional to planet radius on a separate scale. "
+                               "If both are missing, a fixed small circle is used.")
             if nasa_error:
                 st.warning("NASA Exoplanet Archive is temporarily unavailable.")
             if eu_error:
@@ -2763,7 +2779,6 @@ elif tool == "Multiplicity":
 
         if catalogue_multiplicity and catalogue_multiplicity["type"].startswith("Multiple"):
             st.divider()
-            st.markdown("**Known multiple in Cifuentes et al. (2025)**")
             sb = catalogue_multiplicity["sb"]
             st.caption(
                 f"Spectroscopic classification: {sb}." if sb
@@ -2771,24 +2786,37 @@ elif tool == "Multiplicity":
             )
             try:
                 with st.spinner("Checking the WDS record..."):
-                    wds_pair = wds_closest_component(star.get("ra"), star.get("dec"))
-                if wds_pair:
-                    discoverer = wds_pair["discoverer"]
-                    discoverer_text = f" (Discoverer {discoverer} in WDS)" if discoverer else " (WDS)"
-                    st.markdown(
-                        "**Projected separation of the closest component:** "
-                        f"{wds_pair['separation_arcsec']:.1f} arcsec{discoverer_text}."
+                    wds_pair = wds_closest_component(
+                        star.get("ra"), star.get("dec"), tuple(star.get("identifiers", []))
                     )
-                    st.caption("Please review manually: the WDS match may be incorrect.")
+                if wds_pair:
+                    separation_col, year_col = st.columns(2)
+                    separation_col.metric(
+                        "Closest component · projected separation",
+                        f"{wds_pair['separation_arcsec']:.1f} arcsec",
+                    )
+                    year = wds_pair.get("last_observation_year")
+                    year_col.metric("Last WDS observation", str(year) if year else "—")
+                    discoverer = " ".join(wds_pair["discoverer"].split()) or "—"
+                    st.markdown(
+                        '<div style="color:#a1a1aa;font-size:0.9rem;line-height:1.8">'
+                        f'<span style="color:#ffffff">WDS {escape(wds_pair["wds"])}</span>'
+                        ' &nbsp; · &nbsp; <span style="color:#ffffff;font-weight:600">'
+                        f'{escape(wds_pair["component"])}</span>'
+                        ' &nbsp; · &nbsp; Discoverer <span style="color:#86cfa5;font-weight:600">'
+                        f'{escape(discoverer)}</span></div>',
+                        unsafe_allow_html=True,
+                    )
                 else:
                     st.caption(
-                        "No WDS separation involving component A was found near "
-                        "the SIMBAD position. Please review the match manually."
+                        "No usable sep2 value for a pair involving component A was returned by WDS. "
+                        "Please review the catalogue record manually."
                     )
             except Exception:
                 st.caption(
                     "WDS separation unavailable. Please review the WDS match manually."
                 )
+            st.markdown("**Known multiple in Cifuentes et al. (2025)**")
 
     with results.container(border=True, key="multiplicity_rvs_card"):
         st.subheader("RVS score vs. RUWE")
