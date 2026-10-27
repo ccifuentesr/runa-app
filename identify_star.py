@@ -115,7 +115,10 @@ def lookup_gaia_photometry(gaia_id):
         query = (
             "SELECT ra, dec, ref_epoch, pmra, pmdec, pmra_error, pmdec_error, "
             "parallax, parallax_error, "
-            "astrometric_n_obs_al, "
+            "astrometric_n_obs_al, astrometric_matched_transits, "
+            "phot_g_n_obs, phot_bp_n_obs, "
+            "rv_nb_transits, "
+            "phot_rp_n_obs, "
             "phot_g_mean_mag, phot_bp_mean_mag, phot_rp_mean_mag, "
             "phot_g_mean_flux_over_error, phot_bp_mean_flux_over_error, "
             "phot_rp_mean_flux_over_error "
@@ -129,6 +132,8 @@ def lookup_gaia_photometry(gaia_id):
                     "pmra_error", "pmdec_error",
                     "parallax", "parallax_error", "phot_g_mean_mag",
                     "phot_bp_mean_mag", "phot_rp_mean_mag", "astrometric_n_obs_al",
+                    "astrometric_matched_transits", "phot_g_n_obs",
+                    "phot_bp_n_obs", "phot_rp_n_obs", "rv_nb_transits",
                 ):
                     value = rows[0][column]
                     photometry[column] = None if np.ma.is_masked(value) else value

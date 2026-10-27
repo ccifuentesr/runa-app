@@ -58,9 +58,11 @@ Documents the offline evaluation of the spectral-type estimator and its training
 
 Applies the seven Gaia DR3 statistical indicators from Cifuentes et al. (2025, Table 3), scores the loaded source for close unresolved multiplicity, visualises RVS score against RUWE, and retrieves nearby Gaia sources for visual inspection. The model score is not a calibrated probability or binary confirmation.
 
+Automatically retrieves Gaia DR3 epoch photometry from Gaia@AIP below the nearby-source view. G, BP and RP are plotted on an inverted magnitude axis, with per-observation variability rejection flags and a CSV download. A successful query with no published series is distinguished from a service error. The implementation follows `kobe.query_gaia_lightcurve.py`.
+
 ### Planets
 
-Searches the [NASA Exoplanet Archive](https://exoplanetarchive.ipac.caltech.edu/) using the loaded star name and catalogue identifiers.
+Searches the [NASA Exoplanet Archive](https://exoplanetarchive.ipac.caltech.edu/) by host aliases and Gaia DR3 ID, and [exoplanet.eu](https://exoplanet.eu/) for candidates. The table shows status, orbital period, radius, mass, semimajor axis and eccentricity; a face-on sketch uses the listed orbital parameters. When the live exoplanet.eu export is unavailable, Proxima c is shown from a dated catalogue record and marked as such.
 
 ### Data
 
@@ -80,7 +82,7 @@ parameters.py             Magnitudes, luminosity, metallicity and mass relations
 multiplicity.py           Gaia DR3 multiplicity indicators
 kinematics.py             Coordinate propagation and BANYAN Σ inputs
 light_curves.py           TESS light curves
-planets.py                NASA Exoplanet Archive query
+planets.py                NASA and exoplanet.eu queries and planet matching
 data/                     Published catalogues and filter data
 ```
 
@@ -90,7 +92,7 @@ data/                     Published catalogues and filter data
 - [Cifuentes et al. (2025)](https://ui.adsabs.harvard.edu/abs/2025A%26A...693A.228C/abstract) — updated CARMENES input catalogue and Gaia multiplicity criteria.
 - [Eker et al. (2018)](https://doi.org/10.1093/mnras/sty1834) — main-sequence mass–luminosity relation.
 - [Duque-Arribas et al. (2023)](https://doi.org/10.3847/1538-4357/acacf6) — Gaia/WISE photometric metallicity calibration.
-- [SIMBAD](https://simbad.cds.unistra.fr/), [Gaia DR3](https://www.cosmos.esa.int/web/gaia/dr3), [VizieR](https://vizier.cds.unistra.fr/), [NASA Exoplanet Archive](https://exoplanetarchive.ipac.caltech.edu/) and [MAST](https://mast.stsci.edu/) — remote data services used by RUNA.
+- [SIMBAD](https://simbad.cds.unistra.fr/), [Gaia DR3](https://www.cosmos.esa.int/web/gaia/dr3), [VizieR](https://vizier.cds.unistra.fr/), [NASA Exoplanet Archive](https://exoplanetarchive.ipac.caltech.edu/), [exoplanet.eu](https://exoplanet.eu/) and [MAST](https://mast.stsci.edu/) — remote data services used by RUNA.
 
 ## Data and limits
 

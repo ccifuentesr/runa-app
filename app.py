@@ -2,6 +2,7 @@
 
 from html import escape
 import json
+import math
 from pathlib import Path
 from urllib.parse import quote
 
@@ -19,6 +20,7 @@ from identify_star import (
 )
 from kinematics import banyan_inputs, run_banyan
 from light_curves import fetch_tess_light_curve, light_curve_figure, tess_identifier
+from gaia_light_curves import query_gaia_epoch_photometry, gaia_epoch_figure
 from gaia_neighbours import (
     local_proper_motion_plot,
     prepare_neighbours,
@@ -45,7 +47,9 @@ from photometry import (
     load_gaia_reference_sample,
     star_cmd_position,
 )
-from planets import lookup_planets
+from planets import (
+    lookup_exoplanet_eu, lookup_planets, merge_planets, saved_proxima_candidate, orbital_mass,
+)
 from position_plots import polar_position_plot
 from predict_star import estimate_subtype
 from models_view import show_models
@@ -439,36 +443,135 @@ def neighbour_table(sources, target_source_id=None):
 
 
 def planet_table(planets):
-    """Show the archive planets in a compact aligned table."""
+    """Show planet status, parameters and source in a compact table."""
     rows = [
         '<section class="runa-planet-table">'
         '<div class="runa-planet-row runa-planet-head">'
-        '<span>Planet</span><span>Discovery</span>'
-        '<span>Period<small>days</small></span>'
-        '<span>Radius<small>R⊕</small></span>'
+        '<span>Planet</span><span>Status</span>'
+        '<span class="runa-orbital-symbol">P<sub>orb</sub><small>days</small></span>'
+        '<span class="runa-orbital-symbol">R<small>R⊕</small></span>'
         '<span>Mass<small>M⊕</small></span>'
-        '<span>Year</span></div>'
+        '<span class="runa-orbital-symbol">a<small>AU</small></span>'
+        '<span class="runa-orbital-symbol">e</span></div>'
     ]
+
+    def display_number(value, decimals):
+        try:
+            number = float(value)
+            return f"{number:,.{decimals}f}" if math.isfinite(number) else "—"
+        except (TypeError, ValueError):
+            return "—"
+
     for planet in planets:
-        period = planet.get("pl_orbper")
-        radius = planet.get("pl_rade")
-        mass = planet.get("pl_masse")
-        year = planet.get("disc_year")
-        period_text = f"{float(period):.2f}" if period is not None else "—"
-        radius_text = f"{float(radius):.2f}" if radius is not None else "—"
-        mass_text = f"{float(mass):.2f}" if mass is not None else "—"
-        year_text = str(year) if year is not None else "—"
+        status = str(planet.get("status") or "Unknown")
+        status_class = "confirmed" if status == "Confirmed" else "candidate"
+        mass_value, mass_kind = orbital_mass(planet)
+        mass_note = "<small>M sin i</small>" if mass_kind == "minimum" else ""
+        source_detail = " + ".join(
+            source for source in str(planet.get("source") or "").split(" + ")
+            if source != "NASA Exoplanet Archive"
+        )
+        details = " · ".join(
+            str(value) for value in (
+                planet.get("discoverymethod"), planet.get("disc_year"),
+                source_detail,
+            ) if value
+        )
         rows.append(
             '<div class="runa-planet-row">'
-            f'<span>{escape(str(planet.get("pl_name") or "—"))}</span>'
-            f'<span>{escape(str(planet.get("discoverymethod") or "—"))}</span>'
-            f'<span>{escape(period_text)}</span>'
-            f'<span>{escape(radius_text)}</span>'
-            f'<span>{escape(mass_text)}</span>'
-            f'<span>{escape(year_text)}</span></div>'
+            f'<span>{escape(str(planet.get("pl_name") or "—"))}'
+            f'<small>{escape(details)}</small></span>'
+            f'<span class="runa-planet-status-{status_class}">{escape(status)}</span>'
+            f'<span>{display_number(planet.get("pl_orbper"), 2)}</span>'
+            f'<span>{display_number(planet.get("pl_rade"), 2)}</span>'
+            f'<span>{display_number(mass_value, 2)}{mass_note}</span>'
+            f'<span>{display_number(planet.get("pl_orbsmax"), 3)}</span>'
+            f'<span>{display_number(planet.get("pl_orbeccen"), 2)}</span></div>'
         )
     rows.append("</section>")
     st.markdown("".join(rows), unsafe_allow_html=True)
+
+
+def planet_orbit_figure(planets):
+    """Draw face-on Kepler ellipses with the host star at one focus."""
+    orbits = []
+    for planet in planets:
+        try:
+            axis = float(planet.get("pl_orbsmax"))
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(axis) or axis <= 0:
+            continue
+        try:
+            eccentricity = float(planet.get("pl_orbeccen"))
+        except (TypeError, ValueError):
+            eccentricity = None
+        if eccentricity is None or not 0 <= eccentricity < 1:
+            eccentricity = None
+        orbits.append((axis, eccentricity, planet))
+    if not orbits:
+        return None
+    orbits.sort(key=lambda item: item[0])
+
+    # A second, physically scaled panel keeps close orbits visible when a
+    # distant candidate would otherwise compress them into the central dot.
+    split = len(orbits) > 1 and orbits[-1][0] / orbits[0][0] > 15
+    if split:
+        gaps = [orbits[i + 1][0] / orbits[i][0] for i in range(len(orbits) - 1)]
+        inner = orbits[:gaps.index(max(gaps)) + 1]
+        panels = [("Inner orbits", inner), ("Full system", orbits)]
+    else:
+        panels = [("Orbital architecture", orbits)]
+
+    figure, axes = plt.subplots(1, len(panels), figsize=(8.8, 3.65), dpi=120)
+    axes = np.atleast_1d(axes)
+    figure.patch.set_facecolor("#18181b")
+    masses = [orbital_mass(planet)[0] for _, _, planet in orbits]
+    largest_mass = max((mass for mass in masses if mass is not None), default=1.0)
+    angles = np.linspace(0, 2 * np.pi, 361)
+    for axis_plot, (title, orbit_set) in zip(axes, panels):
+        axis_plot.set_facecolor("#18181b")
+        for index, (axis, eccentricity, planet) in enumerate(orbit_set):
+            e = eccentricity if eccentricity is not None else 0.0
+            x = axis * (np.cos(angles) - e)
+            y = axis * np.sqrt(1 - e * e) * np.sin(angles)
+            color = "#c4a7e7" if planet.get("status") == "Confirmed" else "#f4cf75"
+            axis_plot.plot(
+                x, y, color=color, linewidth=.7,
+                linestyle="-" if eccentricity is not None else "--", alpha=.9,
+            )
+            label_angle = .65 + index * 1.6
+            label_x = axis * (np.cos(label_angle) - e)
+            label_y = axis * np.sqrt(1 - e * e) * np.sin(label_angle)
+            mass, mass_kind = orbital_mass(planet)
+            if mass is not None:
+                # Matplotlib's scatter size is an area; keep area proportional
+                # to mass with one shared scale across both orbital panels.
+                axis_plot.scatter(
+                    [label_x], [label_y], s=150 * mass / largest_mass,
+                    facecolors="none" if mass_kind == "minimum" else "#c4a7e7",
+                    edgecolors="#c4a7e7", linewidths=1.15, zorder=4,
+                )
+            else:
+                axis_plot.scatter([label_x], [label_y], s=20, marker="x",
+                                  color="#c4a7e7", linewidths=.9, zorder=4)
+            label = str(planet.get("pl_name") or "").split()[-1]
+            axis_plot.annotate(
+                label, (label_x, label_y), xytext=(9, 6), textcoords="offset points",
+                color=color, fontsize=8.5, fontweight="medium",
+            )
+        axis_plot.scatter([0], [0], s=130, marker="*", c="#f4cf75", zorder=5)
+        limit = max(axis * (1 + (e or 0)) for axis, e, _ in orbit_set) * 1.19
+        axis_plot.set(xlim=(-limit, limit), ylim=(-limit, limit), title=title)
+        axis_plot.set_aspect("equal")
+        axis_plot.tick_params(colors="#a1a1aa", labelsize=7)
+        for spine in axis_plot.spines.values():
+            spine.set_color("#39393f")
+        axis_plot.title.set_color("#dedee3")
+        axis_plot.title.set_fontsize(10)
+        axis_plot.set_xlabel("AU", color="#a1a1aa", fontsize=8)
+    figure.tight_layout(pad=1.2)
+    return figure
 
 
 def multiplicity_table(values, criteria):
@@ -722,6 +825,12 @@ def nearby_gaia_sources_v2(ra, dec, radius_arcsec):
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
+def gaia_source_photometry(gaia_id):
+    """Keep Gaia source observations and photometry for one day."""
+    return lookup_gaia_photometry(gaia_id)
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
 def multiplicity_criteria(gaia_id):
     """Keep the Gaia multiplicity indicators for one day."""
     return check_multiplicity(gaia_id)
@@ -739,10 +848,28 @@ def rvs_reference_sample():
     return query_rvs_reference()
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def exoplanet_archive_planets_v2(query_name, main_id, identifiers, gaia_id):
+    """Keep NASA results or a temporary source error for one hour."""
+    try:
+        return lookup_planets(query_name, main_id, identifiers, gaia_id), None
+    except Exception as exc:
+        return [], str(exc)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def exoplanet_eu_planets_v2(query_name, main_id, identifiers):
+    """Keep exoplanet.eu results or a temporary source error for one hour."""
+    try:
+        return lookup_exoplanet_eu(query_name, main_id, identifiers), None
+    except Exception as exc:
+        return [], str(exc)
+
+
 @st.cache_data(ttl=86400, show_spinner=False)
-def exoplanet_archive_planets(query_name, main_id, identifiers):
-    """Keep one NASA Exoplanet Archive query for one day."""
-    return lookup_planets(query_name, main_id, identifiers)
+def gaia_epoch_photometry(source_id):
+    """Reuse the automatically retrieved Gaia time series for one day."""
+    return query_gaia_epoch_photometry(source_id)
 
 
 st.set_page_config(page_title="RUNA · Stellar characterisation", layout="wide")
@@ -758,6 +885,7 @@ st.markdown(
     .runa-title {color: #fafafa; font-size: 3.25rem; font-weight: 700;
                  letter-spacing: -.035em; line-height: 1; margin-top: .95rem;}
     .runa-version {color: #a1a1aa; font-size: .9rem; margin: .42rem 0 1.1rem;}
+    .runa-tagline {color:#92929d;font-size:1.08rem;line-height:1.4;white-space:nowrap;margin:.15rem 0 1.45rem;}
     .runa-tools {border-bottom: 1px solid #27272a; margin: 1.1rem 0 2rem; padding-bottom: .75rem;}
     .runa-tools span {font-size: 1.02rem; color: #92929d;}
     .stMarkdown a, .stCaption a {color: inherit !important;
@@ -992,11 +1120,16 @@ st.markdown(
     .runa-model-decision-label {color:#92929d;font-size:.82rem;line-height:1.3;}
     .runa-model-decision-value {color:#f4cf75;font-size:1.75rem;font-weight:600;line-height:1.25;}
     .runa-model-coverage {color:#f1f1f3;font-size:1rem;font-weight:560;line-height:1.4;margin:.55rem 0 .35rem;}
+    .runa-observation-list {display:grid;gap:.32rem;margin:.65rem 0 1.1rem;}
+    .runa-observation-row {display:flex;align-items:baseline;gap:.5rem;color:#d4d4d8;font-size:.86rem;line-height:1.35;}
+    .runa-observation-number {color:#f1f1f3;font-size:1.38rem;font-weight:680;font-variant-numeric:tabular-nums;white-space:nowrap;}
     .st-key-kinematics_membership_card .runa-large-metric-label,
     .st-key-kinematics_membership_card .runa-large-metric-value {color:#f4cf75;}
     .st-key-kinematics_membership_card .runa-large-metric-label {color:#92929d;}
     .st-key-multiplicity_nearby_card {border-color:#5d5968 !important;border-radius:10px !important;background:#18181b;}
     .st-key-multiplicity_nearby_card h3 {color:#c9c4e8;font-size:1.15rem;font-weight:550;}
+    .st-key-multiplicity_epoch_card {border-color:#5d5968 !important;border-radius:10px !important;background:#18181b;}
+    .st-key-multiplicity_epoch_card h3 {color:#c9c4e8;font-size:1.15rem;font-weight:550;}
     .runa-parameter-error {color: #92929d; font-size: .9rem; font-weight: 430;
                            margin-left: .4rem;}
     .runa-parameter-unit {color: #a4a4ad; font-size: .82rem; font-weight: 430;
@@ -1027,17 +1160,21 @@ st.markdown(
     .runa-planet-table {overflow: hidden; border: 1px solid #2d2d33;
                         border-radius: 12px; margin: .7rem 0 .85rem;
                         background: #121215;}
-    .runa-planet-row {display: grid; grid-template-columns: minmax(6rem, 1.5fr)
-                      minmax(5rem, 1.1fr) repeat(4, minmax(3rem, .65fr)); gap: .45rem;
+    .runa-planet-row {display: grid; grid-template-columns: minmax(8rem, 1.7fr)
+                      minmax(5rem, .8fr) repeat(5, minmax(3rem, .6fr)); gap: .45rem;
                       align-items: center; padding: .65rem .7rem;
                       color: #ededf0; font-size: .8rem; overflow-wrap: anywhere;}
     .runa-planet-row + .runa-planet-row {border-top: 1px solid #28282e;}
     .runa-planet-head {color: #8b8b95; font-size: .74rem; font-weight: 650;
                        letter-spacing: .09em; text-transform: uppercase;}
+    .runa-planet-head .runa-orbital-symbol {text-transform:none;letter-spacing:0;}
     .runa-planet-row small {display: block; color: #a4a4ad; font-size: .68rem;
                             font-weight: 430; letter-spacing: 0; text-transform: none;
                             margin-top: .12rem;}
     .runa-planet-row > span:first-child {font-weight: 560; white-space: nowrap;}
+    .runa-planet-row > span:first-child small {white-space:normal;}
+    .runa-planet-status-confirmed {color:#6ee7b7;font-weight:650;}
+    .runa-planet-status-candidate {color:#f4cf75;font-weight:650;}
     .runa-catalogue-note {color: #777780; font-size: .78rem; margin: -.2rem 0 1rem;}
     .runa-cifuentes-scroll {overflow-x: auto; border: 1px solid #2d2d33;
                             border-radius: 12px; margin: .7rem 0 1rem;
@@ -1218,10 +1355,6 @@ with header_title:
         '<div class="runa-version">v20261026</div>',
         unsafe_allow_html=True,
     )
-    st.write(
-        "For stellar characterisation · currently optimised for M dwarfs · "
-        "expanding to other stellar types and objects."
-    )
 with header_search:
     search_name, search_button = st.columns([2.2, 0.75], gap="small")
     with search_name:
@@ -1233,11 +1366,8 @@ with header_search:
         top_submitted = st.button("RUN", use_container_width=True)
 
 st.markdown(
-    """
-    <div class="runa-tools" aria-label="RUNA project details">
-      <span>Python · Astropy · astroquery · scikit-learn · Matplotlib · ADQL/SQL · Streamlit</span>
-    </div>
-    """,
+    '<div class="runa-tagline">For stellar characterisation · currently optimised for M dwarfs · '
+    'expanding to other stellar types and objects.</div>',
     unsafe_allow_html=True,
 )
 
@@ -1281,7 +1411,7 @@ if top_submitted:
             search_error = "No object was found for that name."
         else:
             data["query_name"] = top_name.strip()
-            data["gaia_photometry"] = lookup_gaia_photometry(data["gaia_id"])
+            data["gaia_photometry"] = gaia_source_photometry(data["gaia_id"])
             data["twomass_photometry"] = lookup_2mass_j(data["twomass_id"])
             data["johnson_photometry"] = lookup_johnson_v(data["main_id"])
             data["survey_image"] = fetch_survey_image(data["ra"], data["dec"])
@@ -1312,6 +1442,7 @@ else:
     else:
         input_card = inputs.container(border=True, key=input_card_key)
     nearby_card = inputs.container(border=True, key="multiplicity_nearby_card") if tool == "Multiplicity" else None
+    epoch_card = inputs.container(border=True, key="multiplicity_epoch_card") if tool == "Multiplicity" else None
     spectral_type_card = (
         inputs.container(border=True, key="photometry_estimated_spectral") if tool == "Photometry" else None
     )
@@ -1327,7 +1458,7 @@ else:
         key=("kinematics_membership_card" if tool == "Kinematics" else
              "planets_registered_card" if tool == "Planets" else None),
     )
-    tess_card = results.container(
+    tess_card = inputs.container(
         border=True, key="planets_tess_card"
     ) if tool == "Planets" else None
 
@@ -2350,44 +2481,64 @@ elif tool == "Planets":
         else:
             st.markdown(
                 '<p class="runa-note">The loaded object name and its catalogue '
-                'identifiers are matched against the NASA Exoplanet Archive.</p>',
+                'identifiers are matched against the NASA Exoplanet Archive '
+                'and exoplanet.eu.</p>',
                 unsafe_allow_html=True,
             )
-            st.caption("The search uses the archive's PSCompPars table.")
+            st.caption("NASA: PSCompPars confirmed planets · exoplanet.eu: planets and candidates")
 
     with result_card:
-        panel_heading("Registered planets")
+        panel_heading("Planets and candidates")
         if star is None:
             st.write("Choose a star in **Identification** first.")
         else:
-            try:
-                with st.spinner("Searching NASA Exoplanet Archive..."):
-                    planets = exoplanet_archive_planets(
-                        star.get("query_name"),
-                        star.get("main_id"),
-                        tuple(star.get("identifiers", [])),
-                    )
-            except Exception:
-                st.error(
-                    "The NASA Exoplanet Archive query failed. Please try again later."
+            with st.spinner("Searching planetary catalogues..."):
+                identifiers = tuple(star.get("identifiers", []))
+                nasa_planets, nasa_error = exoplanet_archive_planets_v2(
+                    star.get("query_name"), star.get("main_id"), identifiers,
+                    star.get("gaia_id"),
                 )
+                eu_planets, eu_error = exoplanet_eu_planets_v2(
+                    star.get("query_name"), star.get("main_id"), identifiers,
+                )
+            saved_candidate = saved_proxima_candidate(star.get("gaia_id")) if eu_error else []
+            eu_planets = [*eu_planets, *saved_candidate]
+            planets = merge_planets(nasa_planets, eu_planets)
+            if not planets:
+                if nasa_error and eu_error:
+                    st.error("Neither planetary catalogue could be reached right now.")
+                else:
+                    st.info("No planets or candidates were found for this object.")
             else:
-                if not planets:
-                    st.info(
-                        "No planets were found for this object in the NASA Exoplanet Archive."
+                planet_table(planets)
+                st.caption(
+                    f"{len(planets)} distinct object(s) · green: confirmed · yellow: candidate or unconfirmed. "
+                    "An em dash means the parameter is unavailable."
+                )
+                orbit_figure = planet_orbit_figure(planets)
+                if orbit_figure is not None:
+                    st.pyplot(orbit_figure, use_container_width=True)
+                    plt.close(orbit_figure)
+                    st.caption(
+                        "Face-on orbital sketch in AU, using catalogue semimajor axes and eccentricities. "
+                        "The star is at one focus; orientation and planet positions are illustrative. "
+                        "A dashed circle means eccentricity is unavailable."
+                    )
+                    st.caption("Lilac circles: area proportional to mass · open: M sin i · "
+                               "filled: mass determined · ×: mass unavailable or only a limit. "
+                               "Candidate orbits remain yellow.")
+            if nasa_error:
+                st.warning("NASA Exoplanet Archive is temporarily unavailable.")
+            if eu_error:
+                if saved_candidate:
+                    st.caption(
+                        "Live exoplanet.eu data are unavailable. Proxima c is shown from "
+                        "a [saved exoplanet.eu record]"
+                        "(https://www.exoplanet.eu/catalog/proxima_centauri_c--7082/) "
+                        "checked on 27 October 2026; other candidates may be missing."
                     )
                 else:
-                    host_names = sorted({
-                        str(planet.get("hostname"))
-                        for planet in planets
-                        if planet.get("hostname")
-                    })
-                    if host_names:
-                        st.caption("Archive host name: " + ", ".join(host_names))
-                    planet_table(planets)
-                    st.caption(
-                        f"{len(planets)} planet(s) listed in the NASA Exoplanet Archive."
-                    )
+                    st.warning("exoplanet.eu is temporarily unavailable; candidates may be missing.")
 
     with tess_card:
         st.subheader("TESS light curve")
@@ -2427,7 +2578,8 @@ elif tool == "Planets":
 
     st.divider()
     st.caption(
-        "Source: NASA Exoplanet Archive, Planetary Systems Composite Parameters table."
+        "Sources: NASA Exoplanet Archive (PSCompPars) and exoplanet.eu. "
+        "NASA values take precedence when an object appears in both catalogues."
     )
 
 elif tool == "Multiplicity":
@@ -2450,20 +2602,50 @@ elif tool == "Multiplicity":
             st.write("No Gaia DR3 identifier in SIMBAD.")
         else:
             st.markdown(
-                f'<div class="runa-gaia-id">Gaia DR3 ID: '
+                f'<div class="runa-gaia-id">Gaia DR3 identifier: '
                 f'<strong>{escape(str(star["gaia_id"]))}</strong></div>',
                 unsafe_allow_html=True,
             )
-            n_obs_al = (star.get("gaia_photometry") or {}).get("astrometric_n_obs_al")
-            try:
-                n_obs_al = int(n_obs_al) if n_obs_al is not None else None
-            except (OverflowError, TypeError, ValueError):
-                n_obs_al = None
-            observation_count = f"{n_obs_al:,}" if n_obs_al is not None else "Unavailable"
-            st.markdown(f"**Astrometric observations (AL):** {observation_count}")
-            st.caption(
-                "Gaia DR3 astrometric_n_obs_al: CCD-level along-scan observations "
-                "used in the astrometric solution."
+            gaia_counts = gaia_source_photometry(star["gaia_id"])
+
+            def formatted_count(field):
+                value = gaia_counts.get(field)
+                try:
+                    return f"{int(value):,}" if value is not None else None
+                except (OverflowError, TypeError, ValueError):
+                    return None
+
+            n_obs_al = formatted_count("astrometric_n_obs_al")
+            photometric_counts = " / ".join(
+                formatted_count(field) or "Unavailable"
+                for field in ("phot_g_n_obs", "phot_bp_n_obs", "phot_rp_n_obs")
+            )
+            observation_rows = (
+                (
+                    formatted_count("astrometric_matched_transits"),
+                    "Gaia field-of-view passages used to measure <strong>astrometric</strong> <strong>position</strong>",
+                ),
+                (n_obs_al, "observations used in the <strong>astrometric</strong> solution"),
+                (
+                    photometric_counts,
+                    "transits contributing to <strong>mean flux</strong> in G / BP / RP",
+                ),
+                (
+                    formatted_count("rv_nb_transits"),
+                    "observing epochs used to calculate the <strong>radial velocity</strong>",
+                ),
+            )
+            rows_html = "".join(
+                '<div class="runa-observation-row">'
+                f'<strong class="runa-observation-number">{escape(value or "Unavailable")}</strong>'
+                f'<span>{description}</span></div>'
+                for value, description in observation_rows
+            )
+            st.markdown(
+                '<div class="runa-observation-list" aria-label="Gaia observation counts">'
+                + rows_html
+                + "</div>",
+                unsafe_allow_html=True,
             )
     with nearby_card:
         st.write("### Nearby Gaia sources")
@@ -2506,6 +2688,37 @@ elif tool == "Multiplicity":
                     )
                 else:
                     st.info("No Gaia sources were found in this radius.")
+
+    with epoch_card:
+        st.subheader("Gaia epoch photometry")
+        if star is None:
+            st.write("Choose a star in **Identification** first.")
+        elif not star.get("gaia_id"):
+            st.info("A Gaia DR3 ID is needed to retrieve the time series.")
+        else:
+            try:
+                with st.spinner("Loading Gaia G, BP and RP time series..."):
+                    epoch_data = gaia_epoch_photometry(star["gaia_id"])
+            except Exception:
+                st.warning("The Gaia epoch-photometry query could not be completed. Try again later.")
+            else:
+                if epoch_data.empty:
+                    st.info("No published Gaia DR3 epoch photometry was found for this source. "
+                            "Time series are available for only a subset of Gaia sources.")
+                else:
+                    epoch_fig = gaia_epoch_figure(epoch_data)
+                    st.pyplot(epoch_fig, use_container_width=True)
+                    plt.close(epoch_fig)
+                    counts = epoch_data["band"].value_counts()
+                    st.caption(" · ".join(f"{band}: {counts.get(band, 0)} measurements"
+                                          for band in ("G", "BP", "RP")))
+                    st.caption("Open circles: not rejected by Gaia variability processing · "
+                               "crosses: rejected · dots: flag unavailable.")
+                    st.download_button("Download Gaia time series", epoch_data.to_csv(index=False),
+                                       file_name=f"gaia_dr3_{star['gaia_id']}_epoch_photometry.csv",
+                                       mime="text/csv", key="download_gaia_epoch_photometry")
+            st.caption("Source: [Gaia DR3 epoch photometry via Gaia@AIP]"
+                       "(https://gaia.aip.de/metadata/gaiadr3/epoch_photometry/).")
 
     values = None
     catalogue_multiplicity = published_multiplicity(star)
