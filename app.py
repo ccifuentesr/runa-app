@@ -22,6 +22,7 @@ from kinematics import banyan_inputs, run_banyan
 from light_curves import fetch_tess_light_curve, light_curve_figure, tess_identifier
 from gaia_light_curves import query_gaia_epoch_photometry, gaia_epoch_figure
 from gaia_neighbours import (
+    companion_diagnostics,
     local_proper_motion_plot,
     prepare_neighbours,
     query_gaia_neighbours,
@@ -402,6 +403,7 @@ def large_metric(label, value, error=None):
 
 def neighbour_table(sources, target_source_id=None):
     """Show the Gaia sources in the same compact style as identification."""
+    target = next((s for s in sources if s["source_id"] == str(target_source_id)), None)
     rows = [
         '<section class="runa-neighbour-table">'
         '<div class="runa-neighbour-row runa-neighbour-head">'
@@ -421,6 +423,14 @@ def neighbour_table(sources, target_source_id=None):
             '<span class="runa-neighbour-badge">Target</span>'
             if is_target else ""
         )
+        diagnostics = companion_diagnostics(source, target)
+        if diagnostics and diagnostics["check"]:
+            row_class = " runa-neighbour-check"
+            detail = (f"Distance difference: {100 * diagnostics['distance_ratio']:.2f}% · "
+                      f"Proper-motion ratio: {100 * diagnostics['motion_ratio']:.2f}% · "
+                      f"Direction difference: {diagnostics['delta_pa_deg']:.2f} deg")
+            target_badge = (f'<span class="runa-neighbour-badge runa-companion-check" '
+                            f'title="{escape(detail)}">Check</span>')
         separation = f"{source['separation_arcsec']:.2f}"
         parallax = (
             f"{source['parallax']:.3f}"
@@ -440,6 +450,14 @@ def neighbour_table(sources, target_source_id=None):
         )
     rows.append("</section>")
     st.markdown("".join(rows), unsafe_allow_html=True)
+    st.caption(
+        "Check: distance and proper motion are compatible with the target under the "
+        "[Cifuentes et al. (2025)](https://doi.org/10.1051/0004-6361/202452527) cuts. "
+        "A possible physical companion, not a confirmed one. "
+        "Missing astrometry is not assessed; close pairs may have distorted Gaia measurements."
+    )
+    if target is None:
+        st.caption("Target absent from this table: companion checks are unavailable.")
 
 
 def planet_table(planets):
@@ -1141,8 +1159,8 @@ st.markdown(
     .st-key-kinematics_membership_card .runa-large-metric-label,
     .st-key-kinematics_membership_card .runa-large-metric-value {color:#f4cf75;}
     .st-key-kinematics_membership_card .runa-large-metric-label {color:#92929d;}
-    .st-key-multiplicity_nearby_card {border-color:#5d5968 !important;border-radius:10px !important;background:#18181b;}
-    .st-key-multiplicity_nearby_card h3 {color:#c9c4e8;font-size:1.15rem;font-weight:550;}
+    .st-key-multiplicity_nearby_card {border-color:#426b5b !important;border-radius:10px !important;background:#18181b;}
+    .st-key-multiplicity_nearby_card h3 {color:#64dfb4;font-size:1.15rem;font-weight:550;}
     .st-key-multiplicity_epoch_card {border-color:#5d5968 !important;border-radius:10px !important;background:#18181b;}
     .st-key-multiplicity_epoch_card h3 {color:#c9c4e8;font-size:1.15rem;font-weight:550;}
     .runa-parameter-error {color: #92929d; font-size: .9rem; font-weight: 430;
@@ -1168,10 +1186,12 @@ st.markdown(
                                    margin-top: .12rem;}
     .runa-neighbour-row > span:first-child {white-space: nowrap; font-size: .78rem;}
     .runa-neighbour-target {background: #1b2a24; color: #f4f4f5;}
+    .runa-neighbour-check {background:#30291c; color:#f4cf75;}
     .runa-neighbour-target small {color: #a7c8b7;}
     .runa-neighbour-badge {display: inline-flex; margin-left: .45rem; padding: .12rem .42rem;
                            border: 1px solid #3c8d6a; border-radius: 999px; color: #6ee7b7;
                            font-size: .7rem; font-weight: 650; vertical-align: middle;}
+    .runa-companion-check {color:#f4cf75; border-color:#a88a43; background:#30291c;}
     .runa-planet-table {overflow: hidden; border: 1px solid #2d2d33;
                         border-radius: 12px; margin: .7rem 0 .85rem;
                         background: #121215;}

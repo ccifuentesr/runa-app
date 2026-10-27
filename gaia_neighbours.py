@@ -94,6 +94,32 @@ def prepare_neighbours(sources, target_ra, target_dec):
     return sorted(prepared, key=lambda source: source["separation_arcsec"])
 
 
+def companion_diagnostics(source, target):
+    """Cifuentes et al. (2025), Sect. 3.1: distance and common-motion cuts.
+
+    Gaia pmra already includes cos(dec). Use the shortest angle between
+    vectors, avoiding the quadrant ambiguity of a one-argument arctangent.
+    None means unavailable, not a failed physical-companion classification.
+    """
+    if target is None or source["source_id"] == target["source_id"]:
+        return None
+    values = [_number(row.get(key)) for row in (target, source)
+              for key in ("parallax", "pmra", "pmdec")]
+    if any(value is None or not np.isfinite(value) for value in values):
+        return None
+    p1, ra1, dec1, p2, ra2, dec2 = values
+    mu1, mu2 = np.hypot(ra1, dec1), np.hypot(ra2, dec2)
+    if p1 <= 0 or p2 <= 0 or mu1 == 0 or mu2 == 0:
+        return None
+    distance_ratio = abs(1 - p1 / p2)
+    motion_ratio = np.hypot(ra1 - ra2, dec1 - dec2) / mu1
+    pa1, pa2 = np.degrees(np.arctan2([ra1, ra2], [dec1, dec2]))
+    delta_pa = abs((pa2 - pa1 + 180) % 360 - 180)
+    return dict(distance_ratio=float(distance_ratio), motion_ratio=float(motion_ratio),
+                delta_pa_deg=float(delta_pa),
+                check=bool(distance_ratio < .10 and motion_ratio < .15 and delta_pa < 15))
+
+
 def local_proper_motion_plot(sources, radius_arcsec, target_source_id=None):
     """Plot nearby sources and their proper-motion vectors in a sky square."""
     if not sources:
