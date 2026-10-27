@@ -204,11 +204,14 @@ def merge_planets(nasa_planets, eu_planets):
 def orbital_mass(planet):
     """Return a positive mass and its kind, excluding limits and inferred masses."""
     mass = _number(planet.get("pl_bmasse"))
-    provenance = str(planet.get("pl_bmassprov") or "").replace(" ", "").lower()
+    # NASA returns "Msini"; other catalogues also use "M*sini".
+    provenance = str(planet.get("pl_bmassprov") or "").lower()
+    for character in " *()":
+        provenance = provenance.replace(character, "")
     if mass is None or mass <= 0 or planet.get("pl_bmasselim") not in (None, 0):
         return None, "unknown"
-    if provenance in {"mass", "m*sin(i)/sin(i)"}:
+    if provenance in {"mass", "msini/sini"}:
         return mass, "mass"
-    if provenance in {"m*sini", "m*sin(i)"}:
+    if provenance == "msini":
         return mass, "minimum"
     return None, "unknown"
