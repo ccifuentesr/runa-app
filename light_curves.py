@@ -1,4 +1,4 @@
-"""Small TESS light-curve helper for the Photometry section."""
+"""Small TESS light-curve helper for the Planets section."""
 
 import re
 import tempfile

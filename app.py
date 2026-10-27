@@ -973,6 +973,8 @@ st.markdown(
     .st-key-multiplicity_object_card .runa-panel-object span {color:#92929d;font-size:.76rem;font-weight:400;letter-spacing:.06em;}
     .st-key-planets_registered_card {border-color:#5d5968 !important;border-radius:10px !important;background:#18181b;}
     .st-key-planets_registered_card h3 {color:#c9c4e8;font-size:1.15rem;font-weight:550;}
+    .st-key-planets_tess_card {border-color:#5d5968 !important;border-radius:10px !important;background:#18181b;}
+    .st-key-planets_tess_card h3 {color:#c9c4e8;font-size:1.15rem;font-weight:550;}
     .st-key-planets_object_card {border-color:#426b5b !important;border-radius:10px !important;background:#18181b;}
     .st-key-planets_object_card .runa-panel-object {color:#64dfb4;font-size:1.15rem;font-weight:550;}
     .st-key-planets_object_card .runa-panel-object span {color:#92929d;font-size:.76rem;font-weight:400;letter-spacing:.06em;}
@@ -1295,6 +1297,7 @@ if tool in ("Identification", "Data", "Models", "Parameters"):
         st.container(border=tool == "Identification")
         if tool not in ("Data", "Models") else None
     )
+    tess_card = None
 else:
     column_widths = [0.62, 1.38] if tool == "Parameters" else [1, 1]
     inputs, results = st.columns(column_widths, gap="small")
@@ -1324,6 +1327,9 @@ else:
         key=("kinematics_membership_card" if tool == "Kinematics" else
              "planets_registered_card" if tool == "Planets" else None),
     )
+    tess_card = results.container(
+        border=True, key="planets_tess_card"
+    ) if tool == "Planets" else None
 
 if tool == "Data":
     st.markdown("### Reference data")
@@ -1903,42 +1909,6 @@ elif tool == "Photometry":
                         "RUWE < 1.4, more than eight visibility periods and high-S/N G, BP and RP photometry."
                     )
 
-    with result_card:
-        with st.container(border=True, key="photometry_published_tess"):
-            st.subheader("TESS light curve")
-            if star is None:
-                st.write("Choose a star in **Identification** first.")
-            else:
-                tess_name = tess_identifier(star)
-                if tess_name is None:
-                    st.info("SIMBAD did not return a TIC or TOI identifier for this object.")
-                else:
-                    st.caption(
-                        f"SIMBAD identifier: {tess_name['label']}. "
-                        "The curve is loaded only when requested."
-                    )
-                    if st.button(
-                        "Load TESS light curve",
-                        key="load_tess_light_curve",
-                        use_container_width=True,
-                    ):
-                        with st.spinner("Querying MAST for a TESS light curve..."):
-                            st.session_state["tess_light_curve"] = fetch_tess_light_curve(star)
-
-                    tess_curve = st.session_state.get("tess_light_curve")
-                    if tess_curve is None:
-                        st.write("Select the button to query the TESS SPOC archive.")
-                    elif tess_curve.get("error"):
-                        st.info(tess_curve["error"])
-                    else:
-                        tess_fig = light_curve_figure(tess_curve, star["main_id"])
-                        st.pyplot(tess_fig, use_container_width=True)
-                        plt.close(tess_fig)
-                        st.caption(
-                            "Relative PDCSAP flux from one recent TESS SPOC sector via MAST. "
-                            "The y-axis follows the median and robust scatter, so isolated "
-                            "peaks do not dominate the view. This is not a transit fit."
-                        )
 elif tool == "Parameters":
     parameters = calculate_parameters(star) if star is not None else None
     published_parameters = published_stellar_parameters(star)
@@ -2417,6 +2387,42 @@ elif tool == "Planets":
                     planet_table(planets)
                     st.caption(
                         f"{len(planets)} planet(s) listed in the NASA Exoplanet Archive."
+                    )
+
+    with tess_card:
+        st.subheader("TESS light curve")
+        if star is None:
+            st.write("Choose a star in **Identification** first.")
+        else:
+            tess_name = tess_identifier(star)
+            if tess_name is None:
+                st.info("SIMBAD did not return a TIC or TOI identifier for this object.")
+            else:
+                st.caption(
+                    f"SIMBAD identifier: {tess_name['label']}. "
+                    "The curve is loaded only when requested."
+                )
+                if st.button(
+                    "Load TESS light curve",
+                    key="load_tess_light_curve",
+                    use_container_width=True,
+                ):
+                    with st.spinner("Querying MAST for a TESS light curve..."):
+                        st.session_state["tess_light_curve"] = fetch_tess_light_curve(star)
+
+                tess_curve = st.session_state.get("tess_light_curve")
+                if tess_curve is None:
+                    st.write("Select the button to query the TESS SPOC archive.")
+                elif tess_curve.get("error"):
+                    st.info(tess_curve["error"])
+                else:
+                    tess_fig = light_curve_figure(tess_curve, star["main_id"])
+                    st.pyplot(tess_fig, use_container_width=True)
+                    plt.close(tess_fig)
+                    st.caption(
+                        "Relative PDCSAP flux from one recent TESS SPOC sector via MAST. "
+                        "The y-axis follows the median and robust scatter, so isolated "
+                        "peaks do not dominate the view. This is not a transit fit."
                     )
 
     st.divider()
