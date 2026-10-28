@@ -1,19 +1,25 @@
-"""Look up planets in NASA's archive and the exoplanet.eu catalogue."""
+"""Look up planets in NASA's archive and Open Exoplanet Catalogue."""
 
-import csv
-from io import StringIO
+import gzip
 import json
 import math
+import csv
+import re
+from functools import lru_cache
+from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+import xml.etree.ElementTree as ET
 
 
 NASA_TAP_URL = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync"
-EXOPLANET_EU_CSV_URL = "https://exoplanet.eu/catalog/csv/"
+OEC_GZIP_URL = "https://github.com/OpenExoplanetCatalogue/oec_gzip/raw/master/systems.xml.gz"
+OEC_REPOSITORY_URL = "https://github.com/OpenExoplanetCatalogue/open_exoplanet_catalogue"
 JUPITER_TO_EARTH_RADII = 11.209
 JUPITER_TO_EARTH_MASSES = 317.828
-PROXIMA_GAIA_DR3_ID = "5853498713190525696"
-PROXIMA_C_SOURCE = "https://www.exoplanet.eu/catalog/proxima_centauri_c--7082/"
+PLANET_POPULATION_PATH = (
+    Path(__file__).resolve().parent / "data" / "exoplanet_population_20261028.csv"
+)
 
 
 def _clean_candidate(value):
@@ -91,106 +97,141 @@ def _number(value):
         return None
 
 
-def lookup_exoplanet_eu(query_name, main_id, identifiers=None):
-    """Return planet records from exoplanet.eu's filtered CSV export."""
-    names = _candidate_names(query_name, main_id, identifiers)[:8]
-    if not names:
-        return []
-    filters = []
-    for name in names:
-        safe_name = name.replace('"', "")
-        filters.append(f'star_name = "{safe_name}"')
-    url = EXOPLANET_EU_CSV_URL + "?" + urlencode({"query_f": " OR ".join(filters)})
-    request = Request(url, headers={"User-Agent": "RUNA/1.0 (academic catalogue lookup)"})
-    with urlopen(request, timeout=15) as response:
-        text = response.read(2_000_001).decode("utf-8-sig")
-    if len(text) > 2_000_000:
-        raise ValueError("exoplanet.eu returned an unexpectedly large catalogue")
-    reader = csv.DictReader(StringIO(text))
-    if not reader.fieldnames or not {"name", "star_name", "planet_status"}.issubset(reader.fieldnames):
-        raise ValueError("exoplanet.eu did not return its expected CSV columns")
+@lru_cache(maxsize=1)
+def load_planet_population():
+    """Load the bundled NASA confirmed-planet snapshot for the context plot.
 
-    allowed_hosts = {name.casefold() for name in names}
+    The snapshot is deliberately local so redrawing the plot does not make a
+    catalogue request. It contains only sources with a finite period and a
+    measured mass or minimum mass.
+    """
+    if not PLANET_POPULATION_PATH.exists():
+        return []
+
+    planets = []
+    with PLANET_POPULATION_PATH.open(encoding="utf-8", newline="") as handle:
+        for row in csv.DictReader(handle):
+            period = _number(row.get("pl_orbper"))
+            mass = _number(row.get("pl_bmasse")) or _number(row.get("pl_masse"))
+            mass_limit = _number(row.get("pl_bmasselim"))
+            if (
+                period is None
+                or mass is None
+                or period <= 0
+                or mass <= 0
+                or mass_limit not in (None, 0)
+            ):
+                continue
+            planets.append({
+                "pl_name": row.get("pl_name") or "",
+                "pl_orbper": period,
+                "pl_bmasse": mass,
+                "pl_bmassprov": row.get("pl_bmassprov") or "",
+            })
+    return planets
+
+
+def _normalise_name(value):
+    """Normalise catalogue aliases for exact, whitespace-tolerant matching."""
+    return " ".join(str(value or "").casefold().split())
+
+
+@lru_cache(maxsize=1)
+def _open_exoplanet_catalogue_root():
+    """Download and parse the official, compressed OEC XML once per process."""
+    request = Request(
+        OEC_GZIP_URL,
+        headers={"User-Agent": "RUNA/1.0 (catalogue lookup)"},
+    )
+    with urlopen(request, timeout=30) as response:
+        compressed = response.read(50_000_001)
+    if len(compressed) > 50_000_000:
+        raise ValueError("Open Exoplanet Catalogue download is unexpectedly large")
+    return ET.fromstring(gzip.decompress(compressed))
+
+
+def _oec_status(list_name):
+    """Map the OEC collection label to RUNA's compact display states."""
+    label = str(list_name or "").casefold()
+    if "candidate" in label:
+        return "Candidate"
+    if "unconfirmed" in label or "controversial" in label:
+        return "Unconfirmed"
+    return "Confirmed"
+
+
+def lookup_open_exoplanet_catalogue(query_name, main_id, identifiers=None):
+    """Return OEC planets whose host aliases exactly match the SIMBAD aliases."""
+    candidates = _candidate_names(query_name, main_id, identifiers)
+    allowed_names = {_normalise_name(name) for name in candidates}
+    if not allowed_names:
+        return []
+
     rows = []
-    for record in reader:
-        if (record.get("star_name") or "").strip().casefold() not in allowed_hosts:
+    seen = set()
+    for star in _open_exoplanet_catalogue_root().iter("star"):
+        host_names = [name.text.strip() for name in star.findall("name") if name.text]
+        if not any(_normalise_name(name) in allowed_names for name in host_names):
             continue
-        status = (record.get("planet_status") or "").strip().capitalize()
-        if status not in {"Confirmed", "Candidate", "Unconfirmed", "Controversial"}:
-            continue
-        radius = _number(record.get("radius"))
-        mass = _number(record.get("mass"))
-        minimum_mass = _number(record.get("mass_sini"))
-        rows.append({
-            "hostname": (record.get("star_name") or "").strip(),
-            "pl_name": (record.get("name") or "").strip(),
-            "discoverymethod": (record.get("detection_type") or "").strip(),
-            "disc_year": record.get("discovered"),
-            "pl_orbper": _number(record.get("orbital_period")),
-            "pl_orbsmax": _number(record.get("semi_major_axis")),
-            "pl_orbeccen": _number(record.get("eccentricity")),
-            "pl_rade": radius * JUPITER_TO_EARTH_RADII if radius is not None else None,
-            "pl_masse": mass * JUPITER_TO_EARTH_MASSES if mass is not None else None,
-            "pl_bmasse": (mass if mass is not None else minimum_mass) * JUPITER_TO_EARTH_MASSES
-            if mass is not None or minimum_mass is not None else None,
-            "pl_bmassprov": "Mass" if mass is not None else "M*sini" if minimum_mass is not None else None,
-            "pl_bmasselim": 0,
-            "status": status,
-            "source": "exoplanet.eu",
-        })
+        host_name = host_names[0] if host_names else main_id
+        for planet in star.findall("planet"):
+            planet_name = planet.findtext("name") or ""
+            key = (_normalise_name(host_name), _normalise_name(planet_name))
+            if not planet_name or key in seen:
+                continue
+            seen.add(key)
+            mass_element = planet.find("mass")
+            mass = _number(mass_element.text if mass_element is not None else None)
+            mass_type = str(mass_element.get("type") or "").casefold() if mass_element is not None else ""
+            is_minimum_mass = mass_type in {"msini", "m sini", "m*sin(i)"}
+            radius = _number(planet.findtext("radius"))
+            rows.append({
+                "hostname": host_name,
+                "pl_name": planet_name.strip(),
+                "discoverymethod": (planet.findtext("discoverymethod") or "").strip(),
+                "disc_year": _number(planet.findtext("discoveryyear")),
+                "pl_orbper": _number(planet.findtext("period")),
+                "pl_orbsmax": _number(planet.findtext("semimajoraxis")),
+                "pl_orbeccen": _number(planet.findtext("eccentricity")),
+                "pl_rade": radius * JUPITER_TO_EARTH_RADII if radius is not None else None,
+                "pl_masse": mass * JUPITER_TO_EARTH_MASSES if mass is not None and not is_minimum_mass else None,
+                "pl_bmasse": mass * JUPITER_TO_EARTH_MASSES if mass is not None else None,
+                "pl_bmassprov": "Msini" if is_minimum_mass else "Mass" if mass is not None else None,
+                "pl_bmasselim": 0,
+                "status": _oec_status(planet.findtext("list")),
+                "source": "Open Exoplanet Catalogue",
+                "source_url": OEC_REPOSITORY_URL,
+            })
     return rows
 
 
-def saved_proxima_candidate(gaia_id):
-    """Use a dated exoplanet.eu record if its live export is unreachable."""
-    if str(gaia_id) != PROXIMA_GAIA_DR3_ID:
-        return []
-    return [{
-        "hostname": "Proxima Centauri",
-        "pl_name": "Proxima Centauri c",
-        "discoverymethod": "Radial Velocity / Astrometry",
-        "disc_year": 2019,
-        "pl_orbper": 1928.0,
-        "pl_orbsmax": 1.48,
-        "pl_orbeccen": 0.0,
-        "pl_rade": None,
-        "pl_masse": None,
-        "status": "Candidate",
-        "source": "exoplanet.eu snapshot · 2026-10-27",
-        "source_url": PROXIMA_C_SOURCE,
-    }]
-
-
 def _planet_key(planet):
-    """Match a planet letter across host aliases such as Proxima Cen/Centauri."""
+    """Return a host-independent key for one planet in the loaded system.
+
+    Planet names are queried for one host at a time, but catalogue aliases can
+    differ in punctuation or whether the final letter has a separating space.
+    The terminal letter is therefore the stable key for cross-catalogue merge.
+    """
     name = str(planet.get("pl_name") or "").strip().casefold()
-    host = str(planet.get("hostname") or "").strip().casefold()
-    prefix = host + " "
-    return name[len(prefix):] if host and name.startswith(prefix) else name
+    letter = re.search(r"([b-z])$", name)
+    if letter is not None:
+        return letter.group(1)
+    return re.sub(r"[^a-z0-9]+", "", name)
 
 
-def merge_planets(nasa_planets, eu_planets):
-    """Keep NASA parameters for confirmed planets, adding unique EU records."""
+def merge_planets(nasa_planets, oec_planets):
+    """Keep NASA records intact and add only OEC planets absent from NASA."""
     merged = {}
-    for planet in [*nasa_planets, *eu_planets]:
+    for planet in nasa_planets:
         key = _planet_key(planet)
         if not key:
             continue
-        if key not in merged:
+        merged.setdefault(key, dict(planet))
+
+    for planet in oec_planets:
+        key = _planet_key(planet)
+        if key and key not in merged:
             merged[key] = dict(planet)
-            continue
-        existing = merged[key]
-        if existing.get("pl_bmasse") is None and planet.get("pl_bmasse") is not None:
-            for field in ("pl_bmasse", "pl_bmassprov", "pl_bmasselim"):
-                existing[field] = planet.get(field)
-        for field in (
-            "pl_orbper", "pl_orbsmax", "pl_orbeccen", "pl_rade", "pl_masse",
-            "discoverymethod", "disc_year",
-        ):
-            if existing.get(field) in (None, "") and planet.get(field) not in (None, ""):
-                existing[field] = planet[field]
-        if planet.get("source") not in str(existing.get("source") or ""):
-            existing["source"] += " + " + planet["source"]
     return sorted(
         merged.values(),
         key=lambda item: (

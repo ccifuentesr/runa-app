@@ -151,13 +151,13 @@ def local_proper_motion_plot(sources, radius_arcsec, target_source_id=None):
         g_mag = source["g_mag"]
         if absolute_g is None or g_mag is None:
             sizes.append(28.0)
-            colours.append("#62626b")
+            colours.append("#ef4444" if is_target else "#62626b")
         else:
             brightness_fraction = (faintest_mag - g_mag) / magnitude_range
             sizes.append(float(np.clip(
                 28.0 + 150.0 * brightness_fraction, 28.0, 178.0
             )))
-            colours.append("#6ee7b7" if is_target else "#d4d4d8")
+            colours.append("#ef4444" if is_target else "#d4d4d8")
 
     ax.scatter(x_values, y_values, s=sizes, c=colours, alpha=0.9,
                edgecolor="#111113", linewidth=0.7, zorder=3)

@@ -1,5 +1,6 @@
 """Identify one star and fetch a survey image."""
 
+from functools import lru_cache
 import io
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -14,6 +15,22 @@ from astroquery.vizier import Vizier
 
 
 SDSS_CUTOUT_URL = "https://skyserver.sdss.org/dr17/SkyServerWS/ImgCutout/getjpeg"
+SIMBAD_SERVERS = ("simbad.cds.unistra.fr", "simbad.harvard.edu")
+
+
+@lru_cache(maxsize=1)
+def available_simbad_server(timeout=4):
+    """Return the first responsive official SIMBAD TAP server."""
+    for server in SIMBAD_SERVERS:
+        try:
+            with urlopen(
+                f"https://{server}/simbad/sim-tap/capabilities",
+                timeout=timeout,
+            ):
+                return server
+        except Exception:
+            continue
+    raise ConnectionError("No SIMBAD server is currently reachable.")
 
 
 def lookup_star(name):
@@ -22,7 +39,10 @@ def lookup_star(name):
         raise ValueError("Enter an object name.")
 
     simbad = Simbad()
-    simbad.TIMEOUT = 20
+    # Select the responsive official server before astroquery initialises TAP.
+    # This also provides a fallback to the Harvard mirror when CDS is offline.
+    simbad.server = available_simbad_server()
+    simbad.timeout = 20
     fields = (
         "ids", "otype", "otype_txt", "sp_type", "sp_bibcode",
         "coo_err_maj", "coo_err_min", "coo_err_angle", "coo_bibcode",
@@ -31,11 +51,9 @@ def lookup_star(name):
         "pm_bibcode",
         "rvz_radvel", "rvz_err", "rvz_bibcode", "fe_h",
     )
-    for field in fields:
-        try:
-            simbad.add_votable_fields(field)
-        except Exception:
-            pass
+    # Adding all fields together performs one metadata request. Adding them one
+    # by one makes astroquery retrieve the SIMBAD field list repeatedly.
+    simbad.add_votable_fields(*fields)
 
     result = simbad.query_object(name)
     if result is None or len(result) == 0:
@@ -59,7 +77,7 @@ def lookup_star(name):
     if data["otype"]:
         safe_type = str(data["otype"]).replace("'", "''")
         try:
-            type_result = Simbad.query_tap(
+            type_result = simbad.query_tap(
                 "SELECT otype_longname FROM otypedef "
                 f"WHERE otype = '{safe_type}'"
             )

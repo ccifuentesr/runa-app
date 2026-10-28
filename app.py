@@ -33,11 +33,11 @@ from multiplicity import (
     rvs_ruwe_plot,
 )
 from parameter_table import stellar_parameter_table, panel_heading
+from simbad_measurements import lookup_simbad_measurements
 from survey_view import survey_image_view
 from parameters import (
     calculate_parameters,
     mass_from_luminosity_eker,
-    mass_from_radius_schweitzer,
     metallicity_from_gaia_wise,
     radius_from_luminosity_temperature,
 )
@@ -49,7 +49,8 @@ from photometry import (
     star_cmd_position,
 )
 from planets import (
-    lookup_exoplanet_eu, lookup_planets, merge_planets, saved_proxima_candidate, orbital_mass,
+    load_planet_population, lookup_open_exoplanet_catalogue, lookup_planets,
+    merge_planets, orbital_mass,
 )
 from position_plots import polar_position_plot
 from predict_star import estimate_subtype
@@ -58,6 +59,7 @@ from train_model import load_stars
 from multiplicity_model import gaia_feature_row, model_definitions, prepare_training_data
 from vosa_input import build_vosa_input
 from cifuentes20 import load_reference_data, temperature_from_spectral_type
+from mamajek import spectral_type_key, temperature_from_mamajek
 from local_volume import local_volume_status
 from published_parameters import published_stellar_parameters, published_multiplicity
 from wds import closest_primary_component
@@ -563,9 +565,9 @@ def planet_orbit_figure(planets):
             e = eccentricity if eccentricity is not None else 0.0
             x = axis * (np.cos(angles) - e)
             y = axis * np.sqrt(1 - e * e) * np.sin(angles)
-            color = "#86cfa5" if planet.get("status") == "Confirmed" else "#f4cf75"
+            orbit_color = "#86cfa5" if planet.get("status") == "Confirmed" else "#f4cf75"
             axis_plot.plot(
-                x, y, color=color, linewidth=.7,
+                x, y, color=orbit_color, linewidth=.7,
                 linestyle="-" if eccentricity is not None else "--", alpha=.9,
             )
             label_angle = .65 + index * 1.6
@@ -582,15 +584,15 @@ def planet_orbit_figure(planets):
                 marker_area = 150 * (radius / largest_radius) ** 2 if radius else 36
             axis_plot.scatter(
                 [label_x], [label_y], s=marker_area, marker="o",
-                facecolors=color if mass_kind == "mass" else "#18181b",
-                edgecolors=color, linewidths=1.15, zorder=4,
+                facecolors="#ef4444" if mass_kind == "mass" else "#18181b",
+                edgecolors="#ef4444", linewidths=1.25, zorder=4,
             )
             label = str(planet.get("pl_name") or "").split()[-1]
             axis_plot.annotate(
                 label, (label_x, label_y),
                 xytext=(14 * np.cos(label_angle), 14 * np.sin(label_angle)),
                 textcoords="offset points", ha="center", va="center",
-                color=color, fontsize=8.5, fontweight="medium",
+                color="#ef4444", fontsize=8.5, fontweight="medium",
                 bbox=dict(facecolor="#18181b", edgecolor="none", pad=1.8), zorder=6,
             )
         axis_plot.scatter([0], [0], s=130, marker="*", c="#f4cf75", zorder=5)
@@ -605,6 +607,87 @@ def planet_orbit_figure(planets):
         axis_plot.set_xlabel("AU", color="#a1a1aa", fontsize=8)
     figure.tight_layout(pad=1.2)
     return figure
+
+
+def planet_population_figure(reference_planets, target_planets):
+    """Place a loaded system in the local mass--period planet population."""
+    background_periods = []
+    background_masses = []
+    for planet in reference_planets:
+        mass, _ = orbital_mass(planet)
+        try:
+            period = float(planet.get("pl_orbper"))
+        except (TypeError, ValueError):
+            continue
+        if (
+            mass is None
+            or not math.isfinite(period)
+            or period <= 0
+            or not math.isfinite(mass)
+            or mass <= 0
+        ):
+            continue
+        background_periods.append(period)
+        background_masses.append(mass)
+
+    if not background_periods:
+        return None, [], 0
+
+    target_points = []
+    for planet in target_planets:
+        mass, mass_kind = orbital_mass(planet)
+        try:
+            period = float(planet.get("pl_orbper"))
+        except (TypeError, ValueError):
+            continue
+        if (
+            mass is None
+            or not math.isfinite(period)
+            or period <= 0
+            or not math.isfinite(mass)
+            or mass <= 0
+        ):
+            continue
+        target_points.append((period, mass, mass_kind, planet))
+
+    figure, axis = plt.subplots(figsize=(6.1, 4.65), dpi=120)
+    figure.patch.set_facecolor("#151518")
+    axis.set_facecolor("#151518")
+    axis.scatter(
+        background_periods, background_masses,
+        s=13, color="#d4d4d8", alpha=.22, linewidths=0,
+        label="Confirmed planets",
+    )
+
+    plotted_target = False
+    for period, mass, mass_kind, planet in target_points:
+        label = "Loaded planet" if not plotted_target else None
+        plotted_target = True
+        axis.scatter(
+            period, mass, s=92,
+            color="#ef4444" if mass_kind == "mass" else "#151518",
+            edgecolor="#ef4444", linewidth=1.65, zorder=4, label=label,
+        )
+        suffix = str(planet.get("pl_name") or "").split()[-1]
+        axis.annotate(
+            suffix, (period, mass), xytext=(6, 5), textcoords="offset points",
+            color="#eeeeef", fontsize=9, zorder=5,
+        )
+
+    axis.set_xscale("log")
+    axis.set_yscale("log")
+    axis.set_xlabel("Orbital period (days)", fontsize=13, color="#d4d4d8")
+    axis.set_ylabel("Planet mass or M sin i (M⊕)", fontsize=13, color="#d4d4d8")
+    axis.tick_params(colors="#a1a1aa", labelsize=11)
+    axis.grid(False)
+    for spine in axis.spines.values():
+        spine.set_color("#3f3f46")
+    axis.legend(
+        facecolor="#19191e", edgecolor="#3f3f46", labelcolor="#d4d4d8",
+        frameon=True, fontsize=9, loc="best",
+    )
+    figure.tight_layout()
+    return figure, target_points, len(background_periods)
 
 
 def multiplicity_table(values, criteria):
@@ -718,7 +801,15 @@ def multiplicity_ml_result(values):
         '</div>',
         unsafe_allow_html=True,
     )
-    st.progress(score, text="Score toward the close-unresolved class")
+    st.markdown(
+        '<div class="runa-score-track" role="progressbar" '
+        f'aria-valuemin="0" aria-valuemax="1" aria-valuenow="{score:.3f}">'
+        f'<div class="runa-score-fill" style="width:{100 * score:.2f}%"></div>'
+        '<span class="runa-score-threshold" aria-label="0.50 threshold"></span>'
+        '</div><div class="runa-score-caption">'
+        'Score toward the close-unresolved class</div>',
+        unsafe_allow_html=True,
+    )
     st.markdown(
         f'<div class="runa-model-coverage">Score based on '
         f'<span style="color:#86cfa5">{total_available}/8</span> available Gaia diagnostics.</div>',
@@ -891,10 +982,10 @@ def exoplanet_archive_planets_v2(query_name, main_id, identifiers, gaia_id):
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def exoplanet_eu_planets_v2(query_name, main_id, identifiers):
-    """Keep exoplanet.eu results or a temporary source error for one hour."""
+def open_exoplanet_catalogue_planets_v2(query_name, main_id, identifiers):
+    """Keep Open Exoplanet Catalogue results or a temporary source error for one hour."""
     try:
-        return lookup_exoplanet_eu(query_name, main_id, identifiers), None
+        return lookup_open_exoplanet_catalogue(query_name, main_id, identifiers), None
     except Exception as exc:
         return [], str(exc)
 
@@ -903,6 +994,12 @@ def exoplanet_eu_planets_v2(query_name, main_id, identifiers):
 def gaia_epoch_photometry(source_id):
     """Reuse the automatically retrieved Gaia time series for one day."""
     return query_gaia_epoch_photometry(source_id)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def simbad_literature_measurements(main_id):
+    """Cache the four SIMBAD literature collections for one hour."""
+    return lookup_simbad_measurements(main_id)
 
 
 st.set_page_config(page_title="RUNA · Stellar characterisation", layout="wide")
@@ -919,6 +1016,12 @@ st.markdown(
                  letter-spacing: -.035em; line-height: 1; margin-top: .95rem;}
     .runa-version {color: #a1a1aa; font-size: .9rem; margin: .42rem 0 1.1rem;}
     .runa-tagline {color:#92929d;font-size:1.08rem;line-height:1.4;white-space:nowrap;margin:.15rem 0 1.45rem;}
+    div[data-testid="stSpinner"],
+    div[data-testid="stSpinner"] * {color:#fafafa !important;}
+    div[data-testid="stSpinner"] svg,
+    div[data-testid="stSpinner"] svg * {
+        color:#64dfb4 !important; fill:#64dfb4 !important;
+    }
     .runa-tools {border-bottom: 1px solid #27272a; margin: 1.1rem 0 2rem; padding-bottom: .75rem;}
     .runa-tools span {font-size: 1.02rem; color: #92929d;}
     .stMarkdown a, .stCaption a {color: inherit !important;
@@ -934,6 +1037,8 @@ st.markdown(
     .runa-note {color: #a1a1aa; font-size: .9rem;}
     .runa-filter-reference {color: #a1a1aa; font-size: .875rem;
                             line-height: 1.4; margin: 0 0 .65rem;}
+    .runa-filter-reference a,
+    .runa-filter-reference a:hover {text-decoration: none !important;}
     .runa-data-source-reference {display: block;}
     .runa-warning-toggle {position:absolute; opacity:0; pointer-events:none;}
     .runa-warning-badge {display:inline; margin-left:.25rem; padding:0;
@@ -949,7 +1054,15 @@ st.markdown(
     .runa-warning-badge:focus-visible {outline: 2px solid #f4cf75; outline-offset: 2px;}
     .st-key-photometry_estimated_distance .runa-data-section,
     .st-key-photometry_estimated_distance .runa-parameter-section {overflow: visible;}
-    .runa-spectral-estimate {margin:.45rem 0 .8rem;}
+    .runa-learning-note {display:flex;align-items:center;gap:.55rem;flex-wrap:wrap;
+                         margin:.2rem 0 .8rem;color:#92929d;font-size:.84rem;}
+    .runa-learning-badge {display:inline-flex;align-items:center;padding:.22rem .55rem;
+                          border:1px solid #426b5b;border-radius:999px;background:#18231f;
+                          color:#64dfb4;font-size:.72rem;font-weight:650;
+                          letter-spacing:.035em;text-transform:uppercase;}
+    .runa-spectral-result {display:flex;align-items:flex-end;justify-content:space-between;
+                           gap:1.2rem;margin:.45rem 0 .85rem;}
+    .runa-spectral-estimate {margin:0;}
     .runa-spectral-estimate span {display:block;color:#92929d;font-size:.82rem;
                                   margin-bottom:.18rem;}
     .runa-spectral-estimate strong {display:block;color:#f4cf75;font-size:2rem;
@@ -985,8 +1098,10 @@ st.markdown(
     .runa-gaia-id {color: #c7c7cf; font-size: 1.1rem; font-weight: 560;
                    margin: .3rem 0 .9rem;}
     .runa-gaia-id strong {color: #f4f4f5; font-weight: 680;}
-    .runa-spectral-colour {color: #c7c7cf; font-size: 1.08rem; margin: .9rem 0 .7rem;}
-    .runa-spectral-colour strong {color: #f4f4f5; font-size: 1.16rem; font-weight: 650;}
+    .runa-spectral-colour {color:#92929d;font-size:.8rem;margin:0 0 .12rem;
+                           text-align:right;white-space:nowrap;}
+    .runa-spectral-colour strong {display:block;color:#d4d4d8;font-size:1.1rem;
+                                  font-weight:560;margin-top:.16rem;}
     .runa-large-metric {padding: .15rem 0 .8rem;}
     .runa-large-metric-label {color: #a1a1aa; font-size: .82rem; margin-bottom: .2rem;}
     .runa-large-metric-label sub {font-size: .72em; vertical-align: sub;}
@@ -1085,8 +1200,9 @@ st.markdown(
                      white-space: nowrap;}
     .runa-data-source {color: #777782; font-size: .72rem; text-align: right;
                        white-space: nowrap; padding-top: .08rem; justify-self: end;}
-    .runa-identification-data .runa-section-title {color: #72727c; font-size: .79rem;
-                         padding-top: .82rem; padding-bottom: .62rem;}
+    .runa-identification-data .runa-section-title {color:#81818b;font-size:.82rem;
+                         font-weight:650;letter-spacing:.08em;text-transform:uppercase;
+                         padding-top:.75rem;padding-bottom:.55rem;}
     .runa-identification-column-marker {display:none;}
     .runa-identification-data .runa-data-row {
         grid-template-columns: minmax(7.4rem, .75fr) minmax(0, 1.5fr)
@@ -1134,17 +1250,16 @@ st.markdown(
     .st-key-multiplicity_object_card .runa-panel-object span {color:#92929d;font-size:.76rem;font-weight:400;letter-spacing:.06em;}
     .st-key-planets_registered_card {border-color:#5d5968 !important;border-radius:10px !important;background:#18181b;}
     .st-key-planets_registered_card h3 {color:#c9c4e8;font-size:1.15rem;font-weight:550;}
+    .st-key-planets_population_card {border-color:#5d5968 !important;border-radius:10px !important;background:#18181b;}
+    .st-key-planets_population_card h3 {color:#c9c4e8;font-size:1.15rem;font-weight:550;}
     .st-key-planets_tess_card {border-color:#5d5968 !important;border-radius:10px !important;background:#18181b;}
     .st-key-planets_tess_card h3 {color:#c9c4e8;font-size:1.15rem;font-weight:550;}
     .st-key-planets_object_card {border-color:#426b5b !important;border-radius:10px !important;background:#18181b;}
     .st-key-planets_object_card .runa-panel-object {color:#64dfb4;font-size:1.15rem;font-weight:550;}
     .st-key-planets_object_card .runa-panel-object span {color:#92929d;font-size:.76rem;font-weight:400;letter-spacing:.06em;}
     .st-key-kinematics_membership_card,
-    .st-key-multiplicity_prediction_card,
-    .st-key-multiplicity_rvs_card {border-color:#595443 !important;border-radius:10px !important;background:#18181b;}
-    .st-key-kinematics_membership_card h3,
-    .st-key-multiplicity_prediction_card h3,
-    .st-key-multiplicity_rvs_card h3 {color:#f4cf75;font-size:1.15rem;font-weight:550;}
+    .st-key-multiplicity_prediction_card {border-color:#595443 !important;border-radius:10px !important;background:#18181b;}
+    .st-key-multiplicity_rvs_card {border-color:#5d5968 !important;border-radius:10px !important;background:#18181b;}
     .runa-ml-draft-status {margin:.1rem 0 .8rem;padding:.8rem .9rem;border:1px solid #4b4226;border-radius:8px;background:#121215;}
     .runa-ml-draft-status small {display:block;color:#92929d;font-size:.72rem;letter-spacing:.06em;margin-bottom:.25rem;}
     .runa-ml-draft-status strong {display:block;color:#f4cf75;font-size:1rem;font-weight:570;}
@@ -1152,6 +1267,12 @@ st.markdown(
     .runa-model-decision {padding-top:.15rem;}
     .runa-model-decision-label {color:#92929d;font-size:.82rem;line-height:1.3;}
     .runa-model-decision-value {color:#f4cf75;font-size:1.75rem;font-weight:600;line-height:1.25;}
+    .runa-score-track {position:relative;height:.58rem;margin:.7rem 0 .35rem;
+                       border-radius:999px;background:#2a2a2f;overflow:visible;}
+    .runa-score-fill {height:100%;border-radius:999px;background:#f4cf75;opacity:.9;}
+    .runa-score-threshold {position:absolute;left:50%;top:-.18rem;bottom:-.18rem;
+                           width:1px;background:rgba(244,244,245,.55);z-index:2;}
+    .runa-score-caption {color:#92929d;font-size:.82rem;line-height:1.35;}
     .runa-model-coverage {color:#f1f1f3;font-size:1rem;font-weight:560;line-height:1.4;margin:.55rem 0 .35rem;}
     .runa-observation-list {display:grid;gap:.32rem;margin:.65rem 0 1.1rem;}
     .runa-observation-row {display:flex;align-items:baseline;gap:.5rem;color:#d4d4d8;font-size:.86rem;line-height:1.35;}
@@ -1159,6 +1280,8 @@ st.markdown(
     .st-key-kinematics_membership_card .runa-large-metric-label,
     .st-key-kinematics_membership_card .runa-large-metric-value {color:#f4cf75;}
     .st-key-kinematics_membership_card .runa-large-metric-label {color:#92929d;}
+    .st-key-kinematics_epoch_card {border-color:#595443 !important;border-radius:10px !important;background:#18181b;}
+    .st-key-kinematics_epoch_card h3 {color:#f4cf75;font-size:1.15rem;font-weight:550;}
     .st-key-multiplicity_nearby_card {border-color:#426b5b !important;border-radius:10px !important;background:#18181b;}
     .st-key-multiplicity_nearby_card h3 {color:#64dfb4;font-size:1.15rem;font-weight:550;}
     .st-key-multiplicity_epoch_card {border-color:#5d5968 !important;border-radius:10px !important;background:#18181b;}
@@ -1198,18 +1321,19 @@ st.markdown(
     .runa-planet-row {display: grid; grid-template-columns: minmax(8rem, 1.7fr)
                       minmax(5rem, .8fr) repeat(5, minmax(3rem, .6fr)); gap: .45rem;
                       align-items: center; padding: .65rem .7rem;
-                      color: #ededf0; font-size: .8rem; overflow-wrap: anywhere;}
+                      color: #ededf0; font-size: .92rem; overflow-wrap: anywhere;}
     .runa-planet-row + .runa-planet-row {border-top: 1px solid #28282e;}
-    .runa-planet-head {color: #8b8b95; font-size: .74rem; font-weight: 650;
+    .runa-planet-head {color: #8b8b95; font-size: .82rem; font-weight: 650;
                        letter-spacing: .09em; text-transform: uppercase;}
     .runa-planet-head .runa-orbital-symbol {text-transform:none;letter-spacing:0;}
-    .runa-planet-row small {display: block; color: #a4a4ad; font-size: .68rem;
+    .runa-planet-row small {display: block; color: #a4a4ad; font-size: .76rem;
                             font-weight: 430; letter-spacing: 0; text-transform: none;
                             margin-top: .12rem;}
     .runa-planet-row > span:first-child {font-weight: 560; white-space: nowrap;}
     .runa-planet-row > span:first-child small {white-space:normal;}
     .runa-planet-status-confirmed {color:#6ee7b7;font-weight:650;}
     .runa-planet-status-candidate {color:#f4cf75;font-weight:650;}
+    .runa-planet-count {color:#aaaab3; font-size:.88rem; margin:.05rem 0 .4rem;}
     .runa-catalogue-note {color: #777780; font-size: .78rem; margin: -.2rem 0 1rem;}
     .runa-cifuentes-scroll {overflow-x: auto; border: 1px solid #2d2d33;
                             border-radius: 12px; margin: .7rem 0 1rem;
@@ -1276,34 +1400,24 @@ st.markdown(
     .runa-data-section.runa-result-published {
         border-color: #5d5968; border-radius: 10px; background: #18181b;
     }
-    .runa-identification-data.runa-result-published .runa-section-title {
-        color: #c9c4e8; font-size: 1.15rem; font-weight: 550;
-        letter-spacing: normal; text-transform: none;
-        padding: .9rem 1rem .65rem;
-    }
     .runa-result-published .runa-data-label {color: #e4e4e7; font-weight: 400;}
     .runa-result-published .runa-data-source,
     .runa-result-published .runa-data-unit,
     .runa-result-published .runa-error {color: #92929d;}
-    .st-key-photometry_published_cmd,
     .st-key-photometry_published_catalogues,
     .st-key-photometry_published_tess {
         border-color: #5d5968 !important; border-radius: 10px !important;
         background: #18181b;
     }
     .st-key-photometry_estimated_spectral,
-    .st-key-photometry_estimated_distance {
+    .st-key-photometry_estimated_distance,
+    .st-key-photometry_estimated_cmd {
         border-color: #595443 !important; border-radius: 10px !important;
         background: #18181b;
     }
     .st-key-photometry_published_catalogues h3,
-    .st-key-photometry_published_tess h3,
-    .st-key-photometry_published_cmd h3 {
+    .st-key-photometry_published_tess h3 {
         color: #c9c4e8; font-size: 1.15rem; font-weight: 550;
-    }
-    .st-key-photometry_estimated_spectral h3,
-    .st-key-photometry_estimated_distance h3 {
-        color: #f4cf75; font-size: 1.15rem; font-weight: 550;
     }
     .st-key-photometry_published_summary {
         border-color: #426b5b !important; border-radius: 10px !important;
@@ -1352,6 +1466,10 @@ if "catalogue_photometry" not in st.session_state:
     st.session_state["catalogue_photometry"] = None
 if "banyan_result" not in st.session_state:
     st.session_state["banyan_result"] = None
+if "banyan_source" not in st.session_state:
+    st.session_state["banyan_source"] = None
+if "banyan_error" not in st.session_state:
+    st.session_state["banyan_error"] = None
 if "tess_light_curve" not in st.session_state:
     st.session_state["tess_light_curve"] = None
 
@@ -1391,14 +1509,20 @@ with header_title:
         unsafe_allow_html=True,
     )
 with header_search:
-    search_name, search_button = st.columns([2.2, 0.75], gap="small")
-    with search_name:
-        top_name = st.text_input(
-            "Object name", placeholder="e.g. Proxima Cen",
-            label_visibility="collapsed", key="runa_object_name",
-        )
-    with search_button:
-        top_submitted = st.button("RUN", use_container_width=True)
+    # A form makes Return/Enter submit the same search as the RUN button.
+    with st.form(
+        "runa_object_search", border=False, enter_to_submit=True,
+    ):
+        search_name, search_button = st.columns([2.2, 0.75], gap="small")
+        with search_name:
+            top_name = st.text_input(
+                "Object name", placeholder="e.g. Proxima Cen",
+                label_visibility="collapsed", key="runa_object_name",
+            )
+        with search_button:
+            top_submitted = st.form_submit_button(
+                "RUN", use_container_width=True,
+            )
 
 st.markdown(
     '<div class="runa-tagline">For stellar characterisation · currently optimised for M dwarfs · '
@@ -1430,28 +1554,31 @@ tool = st.session_state["runa_tool"]
 star = st.session_state["star"]
 search_error = None
 if top_submitted:
-    st.session_state["star"] = None
-    st.session_state["banyan_result"] = None
-    st.session_state["catalogue_photometry"] = None
-    st.session_state["tess_light_curve"] = None
-    star = None
-    try:
-        data = lookup_star(top_name)
-    except ValueError as error:
-        search_error = str(error)
-    except Exception:
-        search_error = "The SIMBAD query failed. Please try again later."
-    else:
-        if data is None:
-            search_error = "No object was found for that name."
+    with st.spinner("Loading star and catalogue data...", show_time=True):
+        st.session_state["star"] = None
+        st.session_state["banyan_result"] = None
+        st.session_state["banyan_source"] = None
+        st.session_state["banyan_error"] = None
+        st.session_state["catalogue_photometry"] = None
+        st.session_state["tess_light_curve"] = None
+        star = None
+        try:
+            data = lookup_star(top_name)
+        except ValueError as error:
+            search_error = str(error)
+        except Exception:
+            search_error = "The SIMBAD query failed. Please try again later."
         else:
-            data["query_name"] = top_name.strip()
-            data["gaia_photometry"] = gaia_source_photometry(data["gaia_id"])
-            data["twomass_photometry"] = lookup_2mass_j(data["twomass_id"])
-            data["johnson_photometry"] = lookup_johnson_v(data["main_id"])
-            data["survey_image"] = fetch_survey_image(data["ra"], data["dec"])
-            st.session_state["star"] = data
-            st.rerun()
+            if data is None:
+                search_error = "No object was found for that name."
+            else:
+                data["query_name"] = top_name.strip()
+                data["gaia_photometry"] = gaia_source_photometry(data["gaia_id"])
+                data["twomass_photometry"] = lookup_2mass_j(data["twomass_id"])
+                data["johnson_photometry"] = lookup_johnson_v(data["main_id"])
+                data["survey_image"] = fetch_survey_image(data["ra"], data["dec"])
+                st.session_state["star"] = data
+                st.rerun()
 
 if search_error:
     st.error(search_error)
@@ -1478,12 +1605,16 @@ else:
         input_card = inputs.container(border=True, key=input_card_key)
     nearby_card = inputs.container(border=True, key="multiplicity_nearby_card") if tool == "Multiplicity" else None
     epoch_card = inputs.container(border=True, key="multiplicity_epoch_card") if tool == "Multiplicity" else None
+    coordinate_epoch_card = (
+        inputs.container(border=True, key="kinematics_epoch_card")
+        if tool == "Kinematics" else None
+    )
     spectral_type_card = (
-        inputs.container(border=True, key="photometry_estimated_spectral") if tool == "Photometry" else None
+        results.container(border=True, key="photometry_estimated_spectral") if tool == "Photometry" else None
     )
     cmd_card = results.container() if tool == "Photometry" else None
     additional_catalogue_card = (
-        results.container(border=True, key="photometry_published_catalogues") if tool == "Photometry" else None
+        inputs.container(border=True, key="photometry_published_catalogues") if tool == "Photometry" else None
     )
     prediction_card = results.container(
         border=True, key="multiplicity_prediction_card"
@@ -1492,6 +1623,10 @@ else:
         border=tool not in ("Photometry", "Parameters"),
         key=("kinematics_membership_card" if tool == "Kinematics" else
              "planets_registered_card" if tool == "Planets" else None),
+    )
+    planet_population_card = (
+        inputs.container(border=True, key="planets_population_card")
+        if tool == "Planets" else None
     )
     tess_card = inputs.container(
         border=True, key="planets_tess_card"
@@ -1759,9 +1894,6 @@ elif tool == "Identification":
                 st.link_button("Open SIMBAD record ↗", simbad_url)
 
 
-    st.divider()
-    st.caption("Sources: SIMBAD, Gaia DR3, 2MASS, UCAC4, SDSS DR17 and NASA SkyView/DSS2. Distance is 1000 / SIMBAD parallax (mas), for positive parallax only.")
-
 elif tool == "Photometry":
     position = star_cmd_position(star) if star is not None else None
     photometry_parameters = calculate_parameters(star) if star is not None else None
@@ -1804,10 +1936,13 @@ elif tool == "Photometry":
                 )
 
     with spectral_type_card:
-        st.subheader("Spectral type estimation")
-        st.caption(
-            "Training, model comparison and validation details: see Models → "
-            "Spectral type estimation."
+        panel_heading("Spectral type estimation")
+        st.markdown(
+            '<div class="runa-learning-note">'
+            '<span class="runa-learning-badge">Supervised learning</span>'
+            '<span>Training, model comparison and validation: '
+            'Models → Spectral type estimation.</span></div>',
+            unsafe_allow_html=True,
         )
         mode = st.radio(
             "Mode", ["Loaded star", "Manual"], horizontal=True,
@@ -1856,14 +1991,12 @@ elif tool == "Photometry":
                 st.error(f"No estimate was made. {error}")
             else:
                 st.markdown(
+                    '<div class="runa-spectral-result">'
                     '<div class="runa-spectral-estimate">'
                     '<span>Estimated spectral type</span>'
-                    f'<strong>M{subtype:.1f}</strong></div>',
-                    unsafe_allow_html=True,
-                )
-                st.markdown(
-                    f'<div class="runa-spectral-colour">G−J colour: '
-                    f'<strong>{color:.2f} mag</strong></div>',
+                    f'<strong>M{subtype:.1f}</strong></div>'
+                    '<div class="runa-spectral-colour">G−J colour'
+                    f'<strong>{color:.2f} mag</strong></div></div>',
                     unsafe_allow_html=True,
                 )
                 if mode == "Manual":
@@ -1876,12 +2009,12 @@ elif tool == "Photometry":
                 ax.scatter(stars["G-J"], stars["SpTnum"], s=12, alpha=0.35, color="#a1a1aa")
                 ax.set_ylim(-0.35, max(5.5, subtype + 0.25))
                 ax.vlines(
-                    color, -0.35, subtype, color="#6ee7b7",
+                    color, -0.35, subtype, color="#ef4444",
                     linestyle=(0, (4, 3)), linewidth=1.0,
                     alpha=0.85, zorder=2,
                 )
                 ax.scatter(
-                    color, subtype, s=85, color="#6ee7b7",
+                    color, subtype, s=85, color="#ef4444",
                     label="Your estimate", zorder=3,
                 )
                 ax.set_xlabel("G−J colour (mag)", fontsize=13)
@@ -1907,7 +2040,7 @@ elif tool == "Photometry":
                 )
 
     with additional_catalogue_card:
-        st.subheader("Additional catalogue photometry")
+        panel_heading("Additional catalogue photometry")
         if star is None:
             st.write("Choose a star in **Identification** first.")
         else:
@@ -1931,9 +2064,7 @@ elif tool == "Photometry":
                     )
             catalogue_records = st.session_state.get("catalogue_photometry")
             if catalogue_records is None:
-                st.write(
-                    "Select the button to query AllWISE, 2MASS, SDSS9, UCAC4 and GALEX."
-                )
+                pass
             else:
                 st.write("#### Spectral energy distribution")
                 sed_points = build_sed_points(catalogue_records)
@@ -2027,8 +2158,8 @@ elif tool == "Photometry":
 
 
     with cmd_card:
-        with st.container(border=True, key="photometry_published_cmd"):
-            st.subheader("Colour–magnitude diagram")
+        with st.container(border=True, key="photometry_estimated_cmd"):
+            panel_heading("Colour–magnitude diagram")
             if star is None:
                 st.write("Choose a star in **Identification** first.")
             elif position is None:
@@ -2050,7 +2181,7 @@ elif tool == "Photometry":
                         label="Gaia reference",
                     )
                     ax.scatter(
-                        colour, absolute_g, s=115, color="#6ee7b7",
+                        colour, absolute_g, s=115, color="#ef4444",
                         edgecolor="#111113", linewidth=1.2,
                         label=str(star["main_id"]), zorder=3,
                     )
@@ -2078,15 +2209,27 @@ elif tool == "Photometry":
 elif tool == "Parameters":
     parameters = calculate_parameters(star) if star is not None else None
     published_parameters = published_stellar_parameters(star)
-    published_luminosity = published_parameters.get("luminosity", [])
-    preferred_luminosity = next(
-        (entry for entry in published_luminosity if entry["reference"].endswith("(2025)")),
-        published_luminosity[0] if published_luminosity else None,
-    )
-    published_temperatures = published_parameters.get("effective_temperature", [])
-    preferred_temperature = (
-        published_temperatures[0] if published_temperatures else None
-    )
+    additional_measurements = None
+    if star is not None:
+        with st.spinner("Loading SIMBAD literature measurements..."):
+            try:
+                additional_measurements = simbad_literature_measurements(star["main_id"])
+            except Exception:
+                additional_measurements = {"unavailable": ["all"]}
+
+    def preferred_published(entries):
+        """Prefer Cifuentes et al. (2025) when both bundled catalogues match."""
+        return next(
+            (entry for entry in entries if entry["reference"].endswith("(2025)")),
+            entries[0] if entries else None,
+        )
+
+    preferred_published_values = {
+        name: preferred_published(entries)
+        for name, entries in published_parameters.items()
+    }
+    preferred_luminosity = preferred_published_values.get("luminosity")
+    preferred_temperature = preferred_published_values.get("effective_temperature")
 
     estimated_temperature = None
     temperature_for_radius = preferred_temperature
@@ -2107,44 +2250,50 @@ elif tool == "Parameters":
                 except ValueError:
                     spectral_type = None
 
-        table_temperature = temperature_from_spectral_type(spectral_type)
+        spectral_key = spectral_type_key(spectral_type)
+        table_temperature = None
+        if spectral_key is not None:
+            if spectral_key[0] == "M":
+                table_temperature = temperature_from_spectral_type(spectral_type)
+                temperature_reference = "Cifuentes et al. (2020), Table 6"
+            else:
+                table_temperature = temperature_from_mamajek(spectral_type)
+                temperature_reference = (
+                    "Pecaut & Mamajek (2013) · Mamajek dwarf sequence"
+                )
         if table_temperature is not None:
             estimated_temperature = {
                 **table_temperature,
                 "origin": spectral_type_origin,
-                "reference": "Cifuentes et al. (2020), Table 6",
+                "reference": temperature_reference,
             }
             temperature_for_radius = estimated_temperature
 
-    radius_luminosity = preferred_luminosity
-    radius_luminosity_source = (
-        preferred_luminosity["reference"] if preferred_luminosity else None
-    )
-    if radius_luminosity is None and parameters is not None:
-        for band in ("M_J", "M_G"):
+    photometric_luminosity = None
+    photometric_luminosity_band = None
+    if parameters is not None:
+        for band in ("M_G", "M_J"):
             estimate = parameters["luminosities"].get(band)
             if estimate is not None:
-                radius_luminosity = {
+                photometric_luminosity = {
                     "value": estimate["luminosity"],
                     "error": estimate["luminosity_error"],
                 }
-                radius_luminosity_source = (
-                    f"Cifuentes et al. (2020), Table 5 · {band}"
-                )
+                photometric_luminosity_band = band
                 break
 
     estimated_radius = None
-    if radius_luminosity is not None and temperature_for_radius is not None:
+    if photometric_luminosity is not None and temperature_for_radius is not None:
         estimated_radius = radius_from_luminosity_temperature(
-            radius_luminosity["value"],
-            radius_luminosity.get("error"),
+            photometric_luminosity["value"],
+            photometric_luminosity.get("error"),
             temperature_for_radius["value"],
             temperature_for_radius.get("error"),
         )
     eker_mass = (
         mass_from_luminosity_eker(
-            preferred_luminosity["value"], preferred_luminosity["error"]
-        ) if preferred_luminosity else None
+            photometric_luminosity["value"], photometric_luminosity.get("error")
+        ) if photometric_luminosity else None
     )
     catalogue_records = st.session_state.get("catalogue_photometry")
     metallicity = None
@@ -2192,51 +2341,58 @@ elif tool == "Parameters":
             st.info("Choose a star in **Identification** first.")
             stellar_parameter_table([
                 ("Luminosity", "L☉", [], []),
-                ("Effective temperature", "K", [], []),
+                ("Teff", "K", [], []),
                 ("Radius", "R☉", [], []),
                 ("Mass", "M☉", [], []),
                 ("Metallicity", "dex", [], []),
             ])
         else:
-            luminosity_rows = [
-                (
-                    "Bolometric luminosity",
-                    f'{entry["value"]:.6g}',
-                    entry["reference"],
-                    f'{entry["error"]:.3g}' if entry["error"] is not None else None,
-                    "L☉",
-                )
-                for entry in published_luminosity
-            ]
-            luminosity_estimates = []
-            for band in ("M_G", "M_J"):
-                estimate = parameters["luminosities"].get(band)
-                if estimate is not None:
-                    luminosity_estimates.append(
+            luminosity_rows = []
+            if preferred_luminosity is not None:
+                luminosity_rows.append(
+                    (
+                        "Bolometric luminosity",
+                        f'{preferred_luminosity["value"]:.6g}',
+                        preferred_luminosity["reference"],
                         (
-                            f"From {band}",
-                            f"{estimate['luminosity']:.6g}",
-                            "Cifuentes et al. (2020), Table 5",
-                            f"{estimate['luminosity_error']:.3g}",
-                            "L☉",
-                        )
+                            f'{preferred_luminosity["error"]:.3g}'
+                            if preferred_luminosity["error"] is not None else None
+                        ),
+                        "L☉",
                     )
-
-            radius_rows = [
-                (
-                    "Published value",
-                    f'{entry["value"]:.4f}',
-                    entry["reference"],
-                    f'{entry["error"]:.4f}' if entry["error"] is not None else None,
-                    "R☉",
                 )
-                for entry in published_parameters.get("radius", [])
-            ]
+            luminosity_estimates = []
+            if photometric_luminosity is not None:
+                luminosity_estimates.append(
+                    (
+                        f"From {photometric_luminosity_band}",
+                        f'{photometric_luminosity["value"]:.6g}',
+                        "Cifuentes et al. (2020), Table 5",
+                        f'{photometric_luminosity["error"]:.3g}',
+                        "L☉",
+                    )
+                )
+
+            preferred_radius = preferred_published_values.get("radius")
+            radius_rows = []
+            if preferred_radius is not None:
+                radius_rows.append(
+                    (
+                        "Published value",
+                        f'{preferred_radius["value"]:.4f}',
+                        preferred_radius["reference"],
+                        (
+                            f'{preferred_radius["error"]:.4f}'
+                            if preferred_radius["error"] is not None else None
+                        ),
+                        "R☉",
+                    )
+                )
             radius_estimates = []
             if estimated_radius is not None:
                 radius_estimates.append(
                     (
-                        "From L and T_eff",
+                        f"From {photometric_luminosity_band} and T_eff",
                         f'{estimated_radius["value"]:.4f}',
                         "Stefan–Boltzmann law",
                         f'{estimated_radius["error"]:.4f}'
@@ -2244,42 +2400,26 @@ elif tool == "Parameters":
                         "R☉",
                     )
                 )
-            mass_rows = [
-                (
-                    "Published value",
-                    f'{entry["value"]:.4f}',
-                    entry["reference"],
-                    f'{entry["error"]:.4f}' if entry["error"] is not None else None,
-                    "M☉",
-                )
-                for entry in published_parameters.get("mass", [])
-            ]
-            mass_estimates = []
-            published_radii = published_parameters.get("radius", [])
-            mass_radius = published_radii[0] if published_radii else estimated_radius
-            mass_radius_source = (
-                published_radii[0]["reference"] if published_radii
-                else "Stefan–Boltzmann estimate"
-            )
-            schweitzer_mass = (
-                mass_from_radius_schweitzer(
-                    mass_radius["value"], mass_radius.get("error")
-                ) if mass_radius is not None else None
-            )
-            if schweitzer_mass is not None:
-                mass_estimates.append(
+            preferred_mass = preferred_published_values.get("mass")
+            mass_rows = []
+            if preferred_mass is not None:
+                mass_rows.append(
                     (
-                        "From radius",
-                        f'{schweitzer_mass["value"]:.4f}',
-                        schweitzer_mass["reference"],
-                        f'{schweitzer_mass["error"]:.4f}',
+                        "Published value",
+                        f'{preferred_mass["value"]:.4f}',
+                        preferred_mass["reference"],
+                        (
+                            f'{preferred_mass["error"]:.4f}'
+                            if preferred_mass["error"] is not None else None
+                        ),
                         "M☉",
                     )
                 )
+            mass_estimates = []
             if eker_mass is not None:
                 mass_estimates.append(
                     (
-                        "From luminosity",
+                        f"From {photometric_luminosity_band} luminosity",
                         f'{eker_mass["value"]:.4f}',
                         "Eker et al. (2018)",
                         f'{eker_mass["error"]:.4f}',
@@ -2287,18 +2427,36 @@ elif tool == "Parameters":
                     )
                 )
 
-            temperature_rows = [
-                (
-                    "Published value",
-                    f'{entry["value"]:.0f}',
-                    entry["reference"],
-                    f'{entry["error"]:.0f}' if entry["error"] is not None else None,
-                    "K",
+            temperature_rows = []
+            if preferred_temperature is not None:
+                temperature_rows.append(
+                    (
+                        "Published value",
+                        f'{preferred_temperature["value"]:.0f}',
+                        preferred_temperature["reference"],
+                        (
+                            f'{preferred_temperature["error"]:.0f}'
+                            if preferred_temperature["error"] is not None else None
+                        ),
+                        "K",
+                    )
                 )
-                for entry in published_temperatures
-            ]
             temperature_estimates = []
-            if estimated_temperature is not None:
+            if preferred_temperature is not None and estimated_radius is not None:
+                temperature_estimates.append(
+                    (
+                        "Published Teff used for R",
+                        f'{preferred_temperature["value"]:.0f}',
+                        preferred_temperature["reference"],
+                        (
+                            f'{preferred_temperature["error"]:.0f}'
+                            if preferred_temperature["error"] is not None else None
+                        ),
+                        "K",
+                        "input",
+                    )
+                )
+            elif estimated_temperature is not None:
                 temperature_label = (
                     "From published SpT"
                     if estimated_temperature["origin"] == "published spectral type"
@@ -2309,20 +2467,28 @@ elif tool == "Parameters":
                         f'{temperature_label} {estimated_temperature["spectral_type"]}',
                         f'{estimated_temperature["value"]:.0f}',
                         estimated_temperature["reference"],
-                        f'{estimated_temperature["error"]:.0f}',
+                        (
+                            f'{estimated_temperature["error"]:.0f}'
+                            if estimated_temperature["error"] is not None else None
+                        ),
                         "K",
                     )
                 )
-            metallicity_rows = [
-                (
-                    "[Fe/H]",
-                    f'{entry["value"]:.3f}',
-                    entry["reference"],
-                    f'{entry["error"]:.3f}' if entry["error"] is not None else None,
-                    "dex",
+            preferred_metallicity = preferred_published_values.get("metallicity")
+            metallicity_rows = []
+            if preferred_metallicity is not None:
+                metallicity_rows.append(
+                    (
+                        "[Fe/H]",
+                        f'{preferred_metallicity["value"]:.3f}',
+                        preferred_metallicity["reference"],
+                        (
+                            f'{preferred_metallicity["error"]:.3f}'
+                            if preferred_metallicity["error"] is not None else None
+                        ),
+                        "dex",
+                    )
                 )
-                for entry in published_parameters.get("metallicity", [])
-            ]
             metallicity_estimates = []
             if metallicity is not None:
                 metallicity_estimates.append(
@@ -2338,24 +2504,44 @@ elif tool == "Parameters":
             object_panel_title(star)
             stellar_parameter_table([
                 ("Luminosity", "L☉", luminosity_rows, luminosity_estimates),
-                ("Effective temperature", "K", temperature_rows, temperature_estimates),
+                ("Teff", "K", temperature_rows, temperature_estimates),
                 ("Radius", "R☉", radius_rows, radius_estimates),
                 ("Mass", "M☉", mass_rows, mass_estimates),
                 ("Metallicity", "dex", metallicity_rows, metallicity_estimates),
-            ])
+            ], additional_measurements=additional_measurements)
             if catalogue_records is None:
                 st.caption("For photometric metallicity, search catalogues in Photometry first.")
-            with st.expander("Calibration notes", expanded=False):
+            with st.expander("Model scopes", expanded=False):
                 st.caption(
-                    "Schweitzer+19: main-sequence M dwarfs older than a few hundred Myr. "
-                    "Mass errors propagate radius and coefficient uncertainties; "
-                    "intrinsic scatter is not added. Eker+18: main-sequence "
-                    "mass–luminosity calibration; no extrapolation outside its intervals."
+                    "Published values use Cifuentes et al. (2025) when both bundled "
+                    "catalogues contain the star. Estimated luminosity uses the applicable "
+                    "Cifuentes et al. (2020) M_G or M_J relation. Radius uses the "
+                    "Stefan–Boltzmann law and the published temperature when available. "
+                    "Otherwise, M dwarfs use Cifuentes et al. (2020), Table 6, and other "
+                    "dwarfs use the Mamajek sequence. Mass uses Eker et al. (2018) only "
+                    "inside its 0.179–31 M☉ main-sequence calibration. RUNA does not "
+                    "extrapolate it or apply a mass–radius fallback. Formal uncertainties "
+                    "from the photometric polynomial are not a calibrated per-star scatter."
                 )
 
 
 elif tool == "Kinematics":
-    banyan_error = None
+    if star is not None:
+        banyan_source = str(star.get("gaia_id") or star.get("main_id"))
+        if st.session_state.get("banyan_source") != banyan_source:
+            st.session_state["banyan_result"] = None
+            st.session_state["banyan_error"] = None
+            st.session_state["banyan_source"] = banyan_source
+            try:
+                with st.spinner("Calculating kinematic population membership..."):
+                    st.session_state["banyan_result"] = run_banyan(star)
+            except (ValueError, RuntimeError) as error:
+                st.session_state["banyan_error"] = str(error)
+            except Exception:
+                st.session_state["banyan_error"] = (
+                    "The population-membership calculation failed. Please try again."
+                )
+    banyan_error = st.session_state.get("banyan_error")
     with input_card:
         object_panel_title(star)
         if star is None:
@@ -2383,27 +2569,16 @@ elif tool == "Kinematics":
                             unit,
                         )
                     )
-            data_section("BANYAN inputs", input_rows)
-            if st.button("Run BANYAN Σ", use_container_width=True):
-                st.session_state["banyan_result"] = None
-                try:
-                    with st.spinner("Calculating population membership..."):
-                        st.session_state["banyan_result"] = run_banyan(star)
-                except ValueError as error:
-                    banyan_error = str(error)
-                except RuntimeError as error:
-                    banyan_error = str(error)
-                except Exception:
-                    banyan_error = "The BANYAN Σ calculation failed. Please try again."
+            data_section("Kinematic inputs", input_rows)
 
     with result_card:
-        panel_heading("BANYAN Σ membership")
+        panel_heading("Kinematic population prediction")
         if banyan_error:
             st.error(banyan_error)
         elif star is None:
             st.write("Choose a star in **Identification** first.")
         elif st.session_state["banyan_result"] is None:
-            st.write("Select **Run BANYAN Σ** to estimate population membership.")
+            st.write("No population-membership prediction is available.")
         else:
             banyan = st.session_state["banyan_result"]
             best_hypothesis = banyan["best_hypothesis"]
@@ -2419,6 +2594,12 @@ elif tool == "Kinematics":
                 )
                 if banyan.get("age_myr") is not None:
                     st.caption(f"Approximate population age: {banyan['age_myr']:g} Myr")
+
+            st.caption(
+                "Most likely hypothesis based on the Bayesian BANYAN Σ classifier, "
+                "using Gaia position, proper motion and parallax when available, "
+                "with the SIMBAD radial velocity when available."
+            )
 
             membership_rows = [
                 ("Field", f"{banyan['field_probability']:.1%}", "BANYAN Σ", None, None),
@@ -2451,62 +2632,60 @@ elif tool == "Kinematics":
                     )
             data_section("Galactic velocity", velocity_rows)
 
-            with st.expander("Coordinates at epoch", expanded=False):
-                gaia_epoch = star.get("gaia_photometry") or {}
-                target_epoch = st.number_input(
-                    "Target epoch (Julian year)",
-                    min_value=1800.0,
-                    max_value=2200.0,
-                    value=2026.0,
-                    step=1.0,
-                    format="%.1f",
-                    key=f"coordinate_epoch_{star['main_id']}",
+    with coordinate_epoch_card:
+        panel_heading("Coordinates at epoch")
+        if star is None:
+            st.write("Choose a star in **Identification** first.")
+        else:
+            gaia_epoch = star.get("gaia_photometry") or {}
+            target_epoch = st.number_input(
+                "Target epoch (Julian year)",
+                min_value=1800.0,
+                max_value=2200.0,
+                value=2026.0,
+                step=1.0,
+                format="%.1f",
+                key=f"coordinate_epoch_{star['main_id']}",
+            )
+            reference_epoch = gaia_epoch.get("ref_epoch")
+            propagated = coordinates_at_epoch(
+                gaia_epoch.get("ra"),
+                gaia_epoch.get("dec"),
+                gaia_epoch.get("pmra"),
+                gaia_epoch.get("pmdec"),
+                reference_epoch,
+                target_epoch,
+            )
+            if propagated is None:
+                st.info(
+                    "Gaia DR3 coordinates, proper motion and reference "
+                    "epoch are needed for this calculation."
                 )
-                reference_epoch = gaia_epoch.get("ref_epoch")
-                propagated = coordinates_at_epoch(
-                    gaia_epoch.get("ra"),
-                    gaia_epoch.get("dec"),
-                    gaia_epoch.get("pmra"),
-                    gaia_epoch.get("pmdec"),
-                    reference_epoch,
-                    target_epoch,
+            else:
+                source = f"Gaia DR3 · {float(reference_epoch):.1f}"
+                data_section(
+                    f"Coordinates at epoch {target_epoch:.1f}",
+                    [
+                        (
+                            "Right ascension",
+                            sexagesimal(propagated["ra"], True),
+                            source,
+                            None,
+                            None,
+                        ),
+                        (
+                            "Declination",
+                            sexagesimal(propagated["dec"]),
+                            source,
+                            None,
+                            None,
+                        ),
+                    ],
                 )
-                if propagated is None:
-                    st.info(
-                        "Gaia DR3 coordinates, proper motion and reference "
-                        "epoch are needed for this calculation."
-                    )
-                else:
-                    source = f"Gaia DR3 · {float(reference_epoch):.1f}"
-                    data_section(
-                        f"Coordinates at epoch {target_epoch:.1f}",
-                        [
-                            (
-                                "Right ascension",
-                                sexagesimal(propagated["ra"], True),
-                                source,
-                                None,
-                                None,
-                            ),
-                            (
-                                "Declination",
-                                sexagesimal(propagated["dec"]),
-                                source,
-                                None,
-                                None,
-                            ),
-                        ],
-                    )
-                    st.caption(
-                        "Gaia DR3 coordinates propagated with its proper motion; "
-                        "the target is a Julian year."
-                    )
-
-    st.divider()
-    st.caption(
-        "Method: BANYAN Σ (Gagné et al. 2018), using Gaia position, proper motion "
-        "and parallax when available, with the SIMBAD radial velocity when available."
-    )
+                st.caption(
+                    "Gaia DR3 coordinates propagated with proper motion to the "
+                    "requested Julian year."
+                )
 
 elif tool == "Planets":
     with input_card:
@@ -2517,10 +2696,9 @@ elif tool == "Planets":
             st.markdown(
                 '<p class="runa-note">The loaded object name and its catalogue '
                 'identifiers are matched against the NASA Exoplanet Archive '
-                'and exoplanet.eu.</p>',
+                'and the Open Exoplanet Catalogue.</p>',
                 unsafe_allow_html=True,
             )
-            st.caption("NASA: PSCompPars confirmed planets · exoplanet.eu: planets and candidates")
 
     with result_card:
         panel_heading("Planets and candidates")
@@ -2533,22 +2711,31 @@ elif tool == "Planets":
                     star.get("query_name"), star.get("main_id"), identifiers,
                     star.get("gaia_id"),
                 )
-                eu_planets, eu_error = exoplanet_eu_planets_v2(
+                oec_planets, oec_error = open_exoplanet_catalogue_planets_v2(
                     star.get("query_name"), star.get("main_id"), identifiers,
                 )
-            saved_candidate = saved_proxima_candidate(star.get("gaia_id")) if eu_error else []
-            eu_planets = [*eu_planets, *saved_candidate]
-            planets = merge_planets(nasa_planets, eu_planets)
+            planets = merge_planets(nasa_planets, oec_planets)
             if not planets:
-                if nasa_error and eu_error:
+                if nasa_error and oec_error:
                     st.error("Neither planetary catalogue could be reached right now.")
                 else:
                     st.info("No planets or candidates were found for this object.")
             else:
+                confirmed_count = sum(
+                    planet.get("status") == "Confirmed" for planet in planets
+                )
+                candidate_count = len(planets) - confirmed_count
+                st.markdown(
+                    '<p class="runa-planet-count">'
+                    f'{confirmed_count} confirmed planets '
+                    f'({candidate_count} candidate planets)</p>',
+                    unsafe_allow_html=True,
+                )
                 planet_table(planets)
                 st.caption(
-                    f"{len(planets)} distinct object(s) · green: confirmed · yellow: candidate or unconfirmed. "
-                    "An em dash means the parameter is unavailable."
+                    "Filled cells mark parameters constrained by the available data. "
+                    "For example, transits constrain a radius, while radial-velocity "
+                    "detections provide a minimum mass (M sin i), not the true mass."
                 )
                 orbit_figure = planet_orbit_figure(planets)
                 if orbit_figure is not None:
@@ -2565,19 +2752,41 @@ elif tool == "Planets":
                                "If both are missing, a fixed small circle is used.")
             if nasa_error:
                 st.warning("NASA Exoplanet Archive is temporarily unavailable.")
-            if eu_error:
-                if saved_candidate:
-                    st.caption(
-                        "Live exoplanet.eu data are unavailable. Proxima c is shown from "
-                        "a [saved exoplanet.eu record]"
-                        "(https://www.exoplanet.eu/catalog/proxima_centauri_c--7082/) "
-                        "checked on 27 October 2026; other candidates may be missing."
-                    )
-                else:
-                    st.warning("exoplanet.eu is temporarily unavailable; candidates may be missing.")
+            if oec_error:
+                st.warning("Open Exoplanet Catalogue is temporarily unavailable.")
+
+    with planet_population_card:
+        panel_heading("Planet population")
+        population = load_planet_population()
+        population_figure, target_points, population_size = planet_population_figure(
+            population,
+            planets if star is not None else [],
+        )
+        if population_figure is None:
+            st.info("The bundled exoplanet population is unavailable.")
+        else:
+            st.pyplot(population_figure, use_container_width=True)
+            plt.close(population_figure)
+            if star is None:
+                st.caption(
+                    f"{population_size:,} confirmed planets with a measured mass or M sin i."
+                )
+            elif target_points:
+                st.caption(
+                    f"{star['main_id']} is shown over {population_size:,} confirmed planets. "
+                    "Open markers denote M sin i."
+                )
+            else:
+                st.caption(
+                    f"{population_size:,} confirmed planets with a measured mass or M sin i. "
+                    f"No mass or M sin i is available for {star['main_id']}."
+                )
+            st.caption(
+                "Local NASA Exoplanet Archive PSCompPars snapshot retrieved 2026-10-28."
+            )
 
     with tess_card:
-        st.subheader("TESS light curve")
+        panel_heading("TESS light curve")
         if star is None:
             st.write("Choose a star in **Identification** first.")
         else:
@@ -2614,7 +2823,7 @@ elif tool == "Planets":
 
     st.divider()
     st.caption(
-        "Sources: NASA Exoplanet Archive (PSCompPars) and exoplanet.eu. "
+        "Sources: NASA Exoplanet Archive (PSCompPars) and Open Exoplanet Catalogue. "
         "NASA values take precedence when an object appears in both catalogues."
     )
 
@@ -2684,7 +2893,7 @@ elif tool == "Multiplicity":
                 unsafe_allow_html=True,
             )
     with nearby_card:
-        st.write("### Nearby Gaia sources")
+        panel_heading("Nearby Gaia sources")
         if star is None:
             st.write("Choose a star in **Identification** first.")
         elif not star["gaia_id"]:
@@ -2726,7 +2935,7 @@ elif tool == "Multiplicity":
                     st.info("No Gaia sources were found in this radius.")
 
     with epoch_card:
-        st.subheader("Gaia epoch photometry")
+        panel_heading("Gaia epoch photometry")
         if star is None:
             st.write("Choose a star in **Identification** first.")
         elif not star.get("gaia_id"):
@@ -2759,10 +2968,13 @@ elif tool == "Multiplicity":
     values = None
     catalogue_multiplicity = published_multiplicity(star)
     with prediction_card:
-        st.subheader("Multiplicity prediction")
-        st.caption(
-            "Training, feature selection and validation details: see Models → "
-            "Unresolved binarity analysis."
+        panel_heading("Multiplicity prediction")
+        st.markdown(
+            '<div class="runa-learning-note">'
+            '<span class="runa-learning-badge">Supervised learning</span>'
+            '<span>Training, feature selection and validation: '
+            'Models → Unresolved binarity analysis.</span></div>',
+            unsafe_allow_html=True,
         )
         if query_error:
             st.error(query_error)
@@ -2839,7 +3051,7 @@ elif tool == "Multiplicity":
             st.markdown("**Known multiple in Cifuentes et al. (2025)**")
 
     with results.container(border=True, key="multiplicity_rvs_card"):
-        st.subheader("RVS score vs. RUWE")
+        panel_heading("Gaia multiplicity diagnostics")
         target_rvs_plot = None
         if star is None or not star.get("gaia_id") or values is None:
             st.info("A Gaia DR3 source with multiplicity criteria is needed for this plot.")
