@@ -19,13 +19,14 @@ SIMBAD_SERVERS = ("simbad.cds.unistra.fr", "simbad.harvard.edu")
 
 
 @lru_cache(maxsize=1)
-def available_simbad_server(timeout=4):
+def available_simbad_server(timeout=15):
     """Return the first responsive official SIMBAD TAP server."""
-    for server in SIMBAD_SERVERS:
+    for index, server in enumerate(SIMBAD_SERVERS):
+        server_timeout = min(4, timeout) if index == 0 else timeout
         try:
             with urlopen(
                 f"https://{server}/simbad/sim-tap/capabilities",
-                timeout=timeout,
+                timeout=server_timeout,
             ):
                 return server
         except Exception:
@@ -61,6 +62,7 @@ def lookup_star(name):
 
     row = result[0]
     data = {}
+    data["simbad_server"] = simbad.server
     columns = (
         "main_id", "otype", "otype_txt", "ra", "dec",
         "coo_err_maj", "coo_err_min", "coo_err_angle", "coo_bibcode",

@@ -2,6 +2,7 @@
 
 from html import escape
 import json
+import logging
 import math
 from pathlib import Path
 from urllib.parse import quote
@@ -63,6 +64,15 @@ from mamajek import spectral_type_key, temperature_from_mamajek
 from local_volume import local_volume_status
 from published_parameters import published_stellar_parameters, published_multiplicity
 from wds import closest_primary_component
+from eso_archive import (
+    ESO_TELBIB_URL,
+    eso_file_details,
+    summarise_eso_spectroscopy,
+)
+from spectroscopy_archives import search_spectroscopy_archives
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 def data_row(label, value, source=None, error=None, unit=None):
@@ -1002,6 +1012,12 @@ def simbad_literature_measurements(main_id):
     return lookup_simbad_measurements(main_id)
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def archival_spectroscopy_search_v4(ra, dec, pmra, pmdec, reference_epoch):
+    """Cache an explicitly requested multi-archive search for one day."""
+    return search_spectroscopy_archives(ra, dec, pmra, pmdec, reference_epoch)
+
+
 st.set_page_config(page_title="RUNA · Stellar characterisation", layout="wide")
 
 st.markdown(
@@ -1060,6 +1076,13 @@ st.markdown(
                           border:1px solid #426b5b;border-radius:999px;background:#18231f;
                           color:#64dfb4;font-size:.72rem;font-weight:650;
                           letter-spacing:.035em;text-transform:uppercase;}
+    .runa-caution-note {display:flex;align-items:flex-start;gap:.65rem;margin:.9rem 0;
+                        padding:.72rem .82rem;border:1px solid #5f4820;border-radius:9px;
+                        background:rgba(245,158,11,.065);color:#d5c6a8;font-size:.82rem;
+                        line-height:1.42;}
+    .runa-caution-icon {display:inline-flex;align-items:center;justify-content:center;
+                        flex:0 0 1.25rem;width:1.25rem;height:1.25rem;border-radius:50%;
+                        background:#6b4b16;color:#ffd38a;font-size:.76rem;font-weight:750;}
     .runa-spectral-result {display:flex;align-items:flex-end;justify-content:space-between;
                            gap:1.2rem;margin:.45rem 0 .85rem;}
     .runa-spectral-estimate {margin:0;}
@@ -1259,6 +1282,8 @@ st.markdown(
     .st-key-planets_object_card .runa-panel-object span {color:#92929d;font-size:.76rem;font-weight:400;letter-spacing:.06em;}
     .st-key-kinematics_membership_card,
     .st-key-multiplicity_prediction_card {border-color:#595443 !important;border-radius:10px !important;background:#18181b;}
+    .st-key-multiplicity_archive_card {border-color:#426b5b !important;border-radius:10px !important;background:#18181b;}
+    .st-key-multiplicity_archive_card h3 {color:#64dfb4;font-size:1.15rem;font-weight:550;}
     .st-key-multiplicity_rvs_card {border-color:#5d5968 !important;border-radius:10px !important;background:#18181b;}
     .runa-ml-draft-status {margin:.1rem 0 .8rem;padding:.8rem .9rem;border:1px solid #4b4226;border-radius:8px;background:#121215;}
     .runa-ml-draft-status small {display:block;color:#92929d;font-size:.72rem;letter-spacing:.06em;margin-bottom:.25rem;}
@@ -1472,6 +1497,10 @@ if "banyan_error" not in st.session_state:
     st.session_state["banyan_error"] = None
 if "tess_light_curve" not in st.session_state:
     st.session_state["tess_light_curve"] = None
+if "spectroscopy_archives" not in st.session_state:
+    st.session_state["spectroscopy_archives"] = None
+if "wds_archive" not in st.session_state:
+    st.session_state["wds_archive"] = None
 
 available_tools = [
     "Identification", "Photometry", "Parameters", "Kinematics", "Multiplicity", "Planets",
@@ -1561,6 +1590,8 @@ if top_submitted:
         st.session_state["banyan_error"] = None
         st.session_state["catalogue_photometry"] = None
         st.session_state["tess_light_curve"] = None
+        st.session_state["spectroscopy_archives"] = None
+        st.session_state["wds_archive"] = None
         star = None
         try:
             data = lookup_star(top_name)
@@ -1604,6 +1635,9 @@ else:
     else:
         input_card = inputs.container(border=True, key=input_card_key)
     nearby_card = inputs.container(border=True, key="multiplicity_nearby_card") if tool == "Multiplicity" else None
+    diagnostics_card = inputs.container(
+        border=True, key="multiplicity_rvs_card"
+    ) if tool == "Multiplicity" else None
     epoch_card = inputs.container(border=True, key="multiplicity_epoch_card") if tool == "Multiplicity" else None
     coordinate_epoch_card = (
         inputs.container(border=True, key="kinematics_epoch_card")
@@ -1618,6 +1652,9 @@ else:
     )
     prediction_card = results.container(
         border=True, key="multiplicity_prediction_card"
+    ) if tool == "Multiplicity" else None
+    archive_card = results.container(
+        border=True, key="multiplicity_archive_card"
     ) if tool == "Multiplicity" else None
     result_card = None if tool == "Multiplicity" else results.container(
         border=tool not in ("Photometry", "Parameters"),
@@ -1887,8 +1924,9 @@ elif tool == "Identification":
                 )
 
             with result_left:
+                simbad_server = star.get("simbad_server") or "simbad.harvard.edu"
                 simbad_url = (
-                    "https://simbad.cds.unistra.fr/simbad/sim-id?Ident="
+                    f"https://{simbad_server}/simbad/sim-id?Ident="
                     + quote(star["query_name"])
                 )
                 st.link_button("Open SIMBAD record ↗", simbad_url)
@@ -3016,15 +3054,96 @@ elif tool == "Multiplicity":
                 f"Spectroscopic classification: {sb}." if sb
                 else "No spectroscopic-binary classification reported."
             )
-            try:
-                with st.spinner("Checking the WDS record..."):
-                    wds_pair = wds_closest_component(
-                        star.get("ra"), star.get("dec"), tuple(star.get("identifiers", []))
-                    )
-                if wds_pair:
+            st.markdown("**Known multiple in Cifuentes et al. (2025)**")
+
+    with archive_card:
+        panel_heading("Archive multiplicity checks")
+        st.caption(
+            "Search public multiplicity catalogues and spectroscopic archives on demand."
+        )
+        st.markdown(
+            '<div class="runa-caution-note" role="note">'
+            '<span class="runa-caution-icon" aria-hidden="true">!</span>'
+            '<span>Archive coverage describes available observations, not whether their '
+            'radial velocities have been analysed and not whether the star is single.</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        if star is None:
+            st.write("Choose a star in **Identification** first.")
+        else:
+            gaia_astrometry = star.get("gaia_photometry") or {}
+            archive_ra = gaia_astrometry.get("ra", star.get("ra"))
+            archive_dec = gaia_astrometry.get("dec", star.get("dec"))
+            archive_key = (
+                str(star.get("main_id")), archive_ra, archive_dec,
+                gaia_astrometry.get("pmra"), gaia_astrometry.get("pmdec"),
+                gaia_astrometry.get("ref_epoch"),
+            )
+            wds_key = (
+                str(star.get("main_id")), star.get("ra"), star.get("dec"),
+                tuple(star.get("identifiers", [])),
+            )
+            wds_button, spectra_button = st.columns(2)
+            if wds_button.button(
+                "Search WDS",
+                key=f"search_wds_{star['main_id']}",
+                type="secondary",
+                use_container_width=True,
+            ):
+                try:
+                    with st.spinner("Searching the WDS catalogue..."):
+                        wds_pair = wds_closest_component(
+                            star.get("ra"), star.get("dec"),
+                            tuple(star.get("identifiers", [])),
+                        )
+                    st.session_state["wds_archive"] = {
+                        "key": wds_key,
+                        "result": wds_pair,
+                    }
+                except Exception:
+                    LOGGER.exception("WDS search failed")
+                    st.session_state["wds_archive"] = {
+                        "key": wds_key,
+                        "error": "The WDS search could not be completed. Try again later.",
+                    }
+
+            if spectra_button.button(
+                "Search spectroscopic archives",
+                key=f"search_spectroscopy_archives_{star['main_id']}",
+                type="secondary",
+                use_container_width=True,
+            ):
+                try:
+                    with st.spinner("Searching archival spectroscopy...", show_time=True):
+                        archive_result = archival_spectroscopy_search_v4(
+                            archive_ra,
+                            archive_dec,
+                            gaia_astrometry.get("pmra"),
+                            gaia_astrometry.get("pmdec"),
+                            gaia_astrometry.get("ref_epoch"),
+                        )
+                    st.session_state["spectroscopy_archives"] = {
+                        "key": archive_key,
+                        "result": archive_result,
+                    }
+                except Exception:
+                    LOGGER.exception("Archival spectroscopy search failed")
+                    st.session_state["spectroscopy_archives"] = {
+                        "key": archive_key,
+                        "error": "The archive search could not be completed. Try again later.",
+                    }
+
+            saved_wds = st.session_state.get("wds_archive")
+            if saved_wds and saved_wds.get("key") == wds_key:
+                st.markdown("**Washington Double Star Catalogue**")
+                if saved_wds.get("error"):
+                    st.warning(saved_wds["error"])
+                elif saved_wds.get("result"):
+                    wds_pair = saved_wds["result"]
                     separation_col, year_col = st.columns(2)
                     separation_col.metric(
-                        "Closest component · projected separation",
+                        "Closest WDS pair",
                         f"{wds_pair['separation_arcsec']:.1f} arcsec",
                     )
                     year = wds_pair.get("last_observation_year")
@@ -3033,24 +3152,107 @@ elif tool == "Multiplicity":
                     st.markdown(
                         '<div style="color:#a1a1aa;font-size:0.9rem;line-height:1.8">'
                         f'<span style="color:#ffffff">WDS {escape(wds_pair["wds"])}</span>'
-                        ' &nbsp; · &nbsp; <span style="color:#ffffff;font-weight:600">'
+                        ' &nbsp; · &nbsp; Component <span style="color:#ffffff;font-weight:600">'
                         f'{escape(wds_pair["component"])}</span>'
                         ' &nbsp; · &nbsp; Discoverer <span style="color:#86cfa5;font-weight:600">'
                         f'{escape(discoverer)}</span></div>',
                         unsafe_allow_html=True,
                     )
                 else:
-                    st.caption(
-                        "No usable sep2 value for a pair involving component A was returned by WDS. "
-                        "Please review the catalogue record manually."
+                    st.info(
+                        "No usable WDS pair involving component A was returned for this object."
                     )
-            except Exception:
-                st.caption(
-                    "WDS separation unavailable. Please review the WDS match manually."
-                )
-            st.markdown("**Known multiple in Cifuentes et al. (2025)**")
 
-    with results.container(border=True, key="multiplicity_rvs_card"):
+            saved_archive = st.session_state.get("spectroscopy_archives")
+            if saved_archive and saved_archive.get("key") == archive_key:
+                st.markdown("**Spectroscopic archives**")
+                if saved_archive.get("error"):
+                    st.warning(saved_archive["error"])
+                else:
+                    archive_result = saved_archive["result"]
+                    archive_rows = archive_result["rows"]
+                    st.dataframe(
+                        archive_result["sources"],
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Link": st.column_config.LinkColumn(
+                                "Archive", display_text="Open"
+                            ),
+                        },
+                    )
+                    st.caption(
+                        "ESO, CARMENES DR1 and NOT/FIES are queried automatically. "
+                        "HARPS-N/TNG, WHT/ING and the full Calar Alto archive are linked "
+                        "for manual review because RUNA has no stable documented query for them."
+                    )
+                    if not archive_rows:
+                        st.info(
+                            "No positionally matched spectra were found in the automated "
+                            "sources. This does not exclude observations outside their stated "
+                            "coverage or in archives that require a manual search."
+                        )
+                    else:
+                        archive_summary = summarise_eso_spectroscopy(archive_rows)
+                        files_col, epochs_col, public_col = st.columns(3)
+                        files_col.metric("Science files", archive_summary["files"])
+                        epochs_col.metric("Observing dates", archive_summary["epochs"])
+                        matched_archives = len({row.get("archive") for row in archive_rows})
+                        public_col.metric("Archives matched", matched_archives)
+                        if archive_summary["first"] and archive_summary["last"]:
+                            st.caption(
+                                f"Observed from {archive_summary['first']} to "
+                                f"{archive_summary['last']} · "
+                                f"{archive_summary['proprietary']} file(s) not yet public"
+                            )
+                        st.dataframe(
+                            archive_summary["instruments"],
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "Files": st.column_config.NumberColumn(format="%d"),
+                                "UTC dates": st.column_config.NumberColumn(format="%d"),
+                                "Exposure h": st.column_config.NumberColumn(format="%.2f"),
+                                "Public": st.column_config.NumberColumn(format="%d"),
+                            },
+                        )
+                        with st.expander("Observing programmes", expanded=False):
+                            st.dataframe(
+                                archive_summary["programmes"],
+                                use_container_width=True,
+                                hide_index=True,
+                            )
+                            st.markdown(
+                                "Use ESO programme IDs above to check refereed use in the "
+                                f"[ESO Telescope Bibliography]({ESO_TELBIB_URL})."
+                            )
+                        with st.expander("Matched raw files", expanded=False):
+                            st.dataframe(
+                                eso_file_details(archive_rows),
+                                use_container_width=True,
+                                hide_index=True,
+                                column_config={
+                                    "Exposure s": st.column_config.NumberColumn(format="%.1f"),
+                                    "Offset arcsec": st.column_config.NumberColumn(format="%.2f"),
+                                    "S/N": st.column_config.NumberColumn(format="%.1f"),
+                                    "Archive": st.column_config.LinkColumn(
+                                        "Archive", display_text="Open"
+                                    ),
+                                },
+                            )
+                            st.caption(
+                                "ESO raw metadata do not provide a uniform resolving power "
+                                "or wavelength range for every exposure. Technique and mode "
+                                "are shown as recorded by the archive."
+                            )
+                        st.caption(
+                            "Candidate positions are propagated from Gaia DR3 and matched "
+                            "within 10 arcsec. "
+                            "High-resolution RV marks instrument capability, not an existing "
+                            "RV time-series analysis."
+                        )
+
+    with diagnostics_card:
         panel_heading("Gaia multiplicity diagnostics")
         target_rvs_plot = None
         if star is None or not star.get("gaia_id") or values is None:

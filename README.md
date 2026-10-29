@@ -58,6 +58,8 @@ Documents the offline evaluation of the spectral-type estimator and its training
 
 Applies the seven Gaia DR3 statistical indicators from Cifuentes et al. (2025, Table 3), scores the loaded source for close unresolved multiplicity, visualises RVS score against RUWE, and retrieves nearby Gaia sources for visual inspection. The model score is not a calibrated probability or binary confirmation.
 
+An on-demand archive search reports positionally matched ESO raw science spectra, CARMENES DR1 spectra and the public NOT/FIES target lists. It shows instruments, observing dates, exposure times, programme metadata and public-release status when supplied by the source. Official HARPS-N/TNG, WHT/ING and full Calar Alto archive interfaces are linked for manual review where RUNA has no stable documented query. Gaia positions are propagated to the observing epoch before the final match. Archive coverage is presented as observational context, not as evidence that a source is single or that its radial velocities have been analysed.
+
 Automatically retrieves Gaia DR3 epoch photometry from Gaia@AIP below the nearby-source view. G, BP and RP are plotted on an inverted magnitude axis, with per-observation variability rejection flags and a CSV download. A successful query with no published series is distinguished from a service error. The implementation follows `kobe.query_gaia_lightcurve.py`.
 
 ### Planets
@@ -82,6 +84,8 @@ evaluate_multiplicity_models.py  Grouped multiplicity-model evaluation
 parameters.py             Magnitudes, luminosity, metallicity and mass relations
 mamajek.py                Mean dwarf sequence from the bundled reference table
 multiplicity.py           Gaia DR3 multiplicity indicators
+eso_archive.py            On-demand ESO archival spectroscopy search
+spectroscopy_archives.py  CARMENES, NOT/FIES and multi-archive coordination
 kinematics.py             Coordinate propagation and BANYAN Σ inputs
 light_curves.py           TESS light curves
 planets.py                NASA and Open Exoplanet Catalogue queries and planet matching
@@ -94,7 +98,7 @@ data/                     Published catalogues and filter data
 - [Cifuentes et al. (2025)](https://ui.adsabs.harvard.edu/abs/2025A%26A...693A.228C/abstract) — updated CARMENES input catalogue and Gaia multiplicity criteria.
 - [Eker et al. (2018)](https://doi.org/10.1093/mnras/sty1834) — main-sequence mass–luminosity relation.
 - [Duque-Arribas et al. (2023)](https://doi.org/10.3847/1538-4357/acacf6) — Gaia/WISE photometric metallicity calibration.
-- [SIMBAD](https://simbad.cds.unistra.fr/), [Gaia DR3](https://www.cosmos.esa.int/web/gaia/dr3), [VizieR](https://vizier.cds.unistra.fr/), [NASA Exoplanet Archive](https://exoplanetarchive.ipac.caltech.edu/), [Open Exoplanet Catalogue](https://github.com/OpenExoplanetCatalogue/open_exoplanet_catalogue) and [MAST](https://mast.stsci.edu/) — remote data services used by RUNA.
+- [SIMBAD](https://simbad.cds.unistra.fr/), [Gaia DR3](https://www.cosmos.esa.int/web/gaia/dr3), [VizieR](https://vizier.cds.unistra.fr/), [ESO Science Archive](https://archive.eso.org/), [NASA Exoplanet Archive](https://exoplanetarchive.ipac.caltech.edu/), [Open Exoplanet Catalogue](https://github.com/OpenExoplanetCatalogue/open_exoplanet_catalogue) and [MAST](https://mast.stsci.edu/) — remote data services used by RUNA.
 
 ## Data and limits
 
