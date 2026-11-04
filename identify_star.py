@@ -1,6 +1,5 @@
 """Identify one star and fetch a survey image."""
 
-from functools import lru_cache
 import io
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -9,29 +8,12 @@ import matplotlib.image as mpimg
 import numpy as np
 import astropy.units as u
 from astroquery.gaia import Gaia
-from astroquery.simbad import Simbad
 from astroquery.skyview import SkyView
-from astroquery.vizier import Vizier
+
+from service_mirrors import SIMBAD_SERVERS, configured_simbad, configured_viziers
 
 
 SDSS_CUTOUT_URL = "https://skyserver.sdss.org/dr17/SkyServerWS/ImgCutout/getjpeg"
-SIMBAD_SERVERS = ("simbad.cds.unistra.fr", "simbad.harvard.edu")
-
-
-@lru_cache(maxsize=1)
-def available_simbad_server(timeout=15):
-    """Return the first responsive official SIMBAD TAP server."""
-    for index, server in enumerate(SIMBAD_SERVERS):
-        server_timeout = min(4, timeout) if index == 0 else timeout
-        try:
-            with urlopen(
-                f"https://{server}/simbad/sim-tap/capabilities",
-                timeout=server_timeout,
-            ):
-                return server
-        except Exception:
-            continue
-    raise ConnectionError("No SIMBAD server is currently reachable.")
 
 
 def lookup_star(name):
@@ -39,11 +21,6 @@ def lookup_star(name):
     if not name:
         raise ValueError("Enter an object name.")
 
-    simbad = Simbad()
-    # Select the responsive official server before astroquery initialises TAP.
-    # This also provides a fallback to the Harvard mirror when CDS is offline.
-    simbad.server = available_simbad_server()
-    simbad.timeout = 20
     fields = (
         "ids", "otype", "otype_txt", "sp_type", "sp_bibcode",
         "coo_err_maj", "coo_err_min", "coo_err_angle", "coo_bibcode",
@@ -54,9 +31,17 @@ def lookup_star(name):
     )
     # Adding all fields together performs one metadata request. Adding them one
     # by one makes astroquery retrieve the SIMBAD field list repeatedly.
-    simbad.add_votable_fields(*fields)
-
-    result = simbad.query_object(name)
+    last_error = None
+    for server in SIMBAD_SERVERS:
+        try:
+            simbad = configured_simbad(timeout=20, server=server)
+            simbad.add_votable_fields(*fields)
+            result = simbad.query_object(name)
+            break
+        except Exception as error:
+            last_error = error
+    else:
+        raise ConnectionError("The SIMBAD query failed on every mirror.") from last_error
     if result is None or len(result) == 0:
         return None
 
@@ -210,30 +195,32 @@ def lookup_2mass_j(twomass_id):
         return {}
 
     source_id = twomass_id.replace("2MASS J", "", 1).strip()
-    vizier = Vizier(
+    clients = configured_viziers(
         columns=["2MASS", "Jmag", "e_Jmag", "Hmag", "e_Hmag",
                  "Kmag", "e_Kmag", "Qflg"],
         catalog="II/246/out",
         row_limit=10,
     )
-    try:
-        results = vizier.query_constraints(**{"2MASS": "=" + source_id})
-        if results:
-            for row in results[0]:
-                if str(row["2MASS"]).strip() != source_id:
-                    continue
-                quality = row["Qflg"]
-                photometry = {}
-                for index, (band, column) in enumerate((("j", "Jmag"), ("h", "Hmag"), ("ks", "Kmag"))):
-                    value, error = row[column], row["e_" + column]
-                    photometry[band + "_mag"] = None if np.ma.is_masked(value) else float(value)
-                    photometry[band + "_error"] = None if np.ma.is_masked(error) else float(error)
-                    photometry[band + "_quality"] = (
-                        None if np.ma.is_masked(quality) else str(quality)[index]
-                    )
-                return photometry
-    except Exception:
-        pass
+    for vizier in clients:
+        try:
+            results = vizier.query_constraints(**{"2MASS": "=" + source_id})
+        except Exception:
+            continue
+        if not results:
+            continue
+        for row in results[0]:
+            if str(row["2MASS"]).strip() != source_id:
+                continue
+            quality = row["Qflg"]
+            photometry = {}
+            for index, (band, column) in enumerate((("j", "Jmag"), ("h", "Hmag"), ("ks", "Kmag"))):
+                value, error = row[column], row["e_" + column]
+                photometry[band + "_mag"] = None if np.ma.is_masked(value) else float(value)
+                photometry[band + "_error"] = None if np.ma.is_masked(error) else float(error)
+                photometry[band + "_quality"] = (
+                    None if np.ma.is_masked(quality) else str(quality)[index]
+                )
+            return photometry
     return {}
 
 
@@ -242,19 +229,22 @@ def lookup_johnson_v(name):
     if not name:
         return {}
 
-    vizier = Vizier(
+    clients = configured_viziers(
         columns=["UCAC4", "Vmag", "e_Vmag"],
         catalog="I/322A/out",
         row_limit=1,
     )
-    try:
-        results = vizier.query_object(name, radius=5 * u.arcsec)
+    for vizier in clients:
+        try:
+            results = vizier.query_object(name, radius=5 * u.arcsec)
+        except Exception:
+            continue
         if not results or not len(results[0]):
-            return {}
+            continue
         row = results[0][0]
         v_mag = row["Vmag"]
         if np.ma.is_masked(v_mag):
-            return {}
+            continue
         v_error = row["e_Vmag"]
         return {
             "v_mag": float(v_mag),
@@ -263,8 +253,7 @@ def lookup_johnson_v(name):
                 None if np.ma.is_masked(v_error) else float(v_error) / 100.0
             ),
         }
-    except Exception:
-        return {}
+    return {}
 
 
 def fetch_sdss_image(ra, dec):

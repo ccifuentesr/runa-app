@@ -6,8 +6,8 @@ from pathlib import Path
 import numpy as np
 import astropy.units as u
 from astroquery.gaia import Gaia
-from astroquery.vizier import Vizier
 from catalogue_selection import OPTICAL_PRIORITY, preferred_photometry
+from service_mirrors import configured_viziers
 
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
@@ -239,23 +239,27 @@ def _query_catalog(star, config):
     if not query_name:
         return None, None
 
-    vizier = Vizier(
+    clients = configured_viziers(
         columns=["+_r", *config["columns"]],
         catalog=config["table"],
         row_limit=10,
     )
-    try:
-        if identifier and config.get("id_column"):
-            catalogue_id = _normalise_identifier(identifier)
-            if config["id_column"] == "AllWISE":
-                catalogue_id = "J" + catalogue_id
-            results = vizier.query_constraints(**{
-                config["id_column"]: "=" + catalogue_id
-            })
-        else:
-            results = vizier.query_object(query_name, radius=5 * u.arcsec)
-    except Exception:
-        results = None
+    results = None
+    for vizier in clients:
+        try:
+            if identifier and config.get("id_column"):
+                catalogue_id = _normalise_identifier(identifier)
+                if config["id_column"] == "AllWISE":
+                    catalogue_id = "J" + catalogue_id
+                results = vizier.query_constraints(**{
+                    config["id_column"]: "=" + catalogue_id
+                })
+            else:
+                results = vizier.query_object(query_name, radius=5 * u.arcsec)
+        except Exception:
+            continue
+        if results:
+            break
     if not results:
         return None, query_name
 

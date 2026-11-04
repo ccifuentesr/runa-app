@@ -153,6 +153,18 @@ def parameter_section(title, rows, empty_message=None):
         )
 
 
+def format_value_and_error(value, error, significant_digits=6):
+    """Format a positive value and its uncertainty with matching decimals."""
+    value = float(value)
+    decimals = (
+        max(0, significant_digits - 1 - math.floor(math.log10(abs(value))))
+        if value else significant_digits
+    )
+    value_text = f"{value:.{decimals}f}"
+    error_text = f"{float(error):.{decimals}f}" if error is not None else None
+    return value_text, error_text
+
+
 def cifuentes20_table(rows):
     """Render Cifuentes et al. (2020), Tables 6 and 7 as one table."""
     magnitude_columns = (
@@ -1924,7 +1936,7 @@ elif tool == "Identification":
                 )
 
             with result_left:
-                simbad_server = star.get("simbad_server") or "simbad.harvard.edu"
+                simbad_server = star.get("simbad_server") or "simbad.cds.unistra.fr"
                 simbad_url = (
                     f"https://{simbad_server}/simbad/sim-id?Ident="
                     + quote(star["query_name"])
@@ -2401,12 +2413,16 @@ elif tool == "Parameters":
                 )
             luminosity_estimates = []
             if photometric_luminosity is not None:
+                luminosity_value, luminosity_error = format_value_and_error(
+                    photometric_luminosity["value"],
+                    photometric_luminosity.get("error"),
+                )
                 luminosity_estimates.append(
                     (
                         f"From {photometric_luminosity_band}",
-                        f'{photometric_luminosity["value"]:.6g}',
+                        luminosity_value,
                         "Cifuentes et al. (2020), Table 5",
-                        f'{photometric_luminosity["error"]:.3g}',
+                        luminosity_error,
                         "L☉",
                     )
                 )

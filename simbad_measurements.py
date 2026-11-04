@@ -1,9 +1,8 @@
 """Bibliographic stellar measurements from the SIMBAD TAP collections."""
 
 import numpy as np
-from astroquery.simbad import Simbad
 
-from identify_star import available_simbad_server
+from service_mirrors import SIMBAD_SERVERS, configured_simbad
 
 
 GAIA_CATALOGUE_BIBCODES = {
@@ -51,9 +50,12 @@ def lookup_simbad_measurements(main_id):
     if not main_id:
         return measurements
 
-    simbad = Simbad()
-    simbad.server = available_simbad_server()
-    simbad.timeout = 20
+    clients = []
+    for server in SIMBAD_SERVERS:
+        try:
+            clients.append(configured_simbad(timeout=20, server=server))
+        except Exception:
+            continue
     safe_id = str(main_id).replace("'", "''")
     specs = (
         ("metallicity", "mesFe_h", "m.fe_h, m.flag"),
@@ -67,9 +69,14 @@ def lookup_simbad_measurements(main_id):
             "JOIN basic AS b ON m.oidref = b.oid "
             f"WHERE b.main_id = '{safe_id}'"
         )
-        try:
-            rows = simbad.query_tap(query)
-        except Exception:
+        rows = None
+        for simbad in clients:
+            try:
+                rows = simbad.query_tap(query)
+                break
+            except Exception:
+                continue
+        if rows is None:
             measurements["unavailable"].append(kind)
             continue
         for row in rows:

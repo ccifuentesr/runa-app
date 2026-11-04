@@ -5,7 +5,8 @@ import re
 
 import astropy.units as u
 from astropy.coordinates import SkyCoord
-from astroquery.vizier import Vizier
+
+from service_mirrors import configured_viziers
 
 
 def closest_primary_component(ra, dec, identifiers=()):
@@ -18,17 +19,35 @@ def closest_primary_component(ra, dec, identifiers=()):
     wds_ids = sorted({match.group(1) for identifier in identifiers
                       if (match := re.match(r"^WDS\s*J?\s*(\d{5}[+-]\d{4})",
                                             str(identifier).strip(), re.IGNORECASE))})
-    vizier = Vizier(columns=["WDS", "Disc", "Comp", "sep2", "Obs2"], row_limit=-1)
-    if wds_ids:
-        tables = []
-        for wds_id in wds_ids:
-            result = vizier.query_constraints(catalog="B/wds/wds", WDS="=" + wds_id)
-            tables.extend(result.values())
-    else:
-        if ra is None or dec is None:
-            return None
-        position = SkyCoord(ra, dec, unit=(u.hourangle, u.deg), frame="icrs")
-        tables = vizier.query_region(position, radius=10 * u.arcsec, catalog="B/wds/wds")
+    clients = configured_viziers(
+        columns=["WDS", "Disc", "Comp", "sep2", "Obs2"],
+        row_limit=-1,
+    )
+    tables = []
+    for vizier in clients:
+        try:
+            if wds_ids:
+                candidate_tables = []
+                for wds_id in wds_ids:
+                    result = vizier.query_constraints(
+                        catalog="B/wds/wds",
+                        WDS="=" + wds_id,
+                    )
+                    candidate_tables.extend(result.values())
+            else:
+                if ra is None or dec is None:
+                    return None
+                position = SkyCoord(ra, dec, unit=(u.hourangle, u.deg), frame="icrs")
+                candidate_tables = vizier.query_region(
+                    position,
+                    radius=10 * u.arcsec,
+                    catalog="B/wds/wds",
+                )
+        except Exception:
+            continue
+        if candidate_tables:
+            tables = candidate_tables
+            break
     if not tables:
         return None
 
