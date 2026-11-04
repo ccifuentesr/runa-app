@@ -103,3 +103,7 @@ data/                     Published catalogues and filter data
 ## Data and limits
 
 The repository contains the runtime catalogues and filter data required by the application. Remote services can be unavailable, incomplete or return no counterpart. Missing values are presented as unavailable rather than imputed. RUNA is a research tool: inspect measurement quality, calibration range and method notes before interpreting an individual result.
+
+## License
+
+RUNA's original software is licensed under the [MIT License](LICENSE). Third-party dependencies, catalogue data, published tables and other external datasets retain their own licenses, attribution requirements and terms of use; they are not relicensed by RUNA's MIT License.
