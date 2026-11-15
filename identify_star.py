@@ -114,7 +114,7 @@ def lookup_star(name):
 
 
 def lookup_gaia_photometry(gaia_id):
-    """Get Gaia astrometry, observation count and magnitudes by exact DR3 ID."""
+    """Get Gaia DR3 data by exact source ID, with VizieR as fallback."""
     photometry = {}
     if gaia_id and str(gaia_id).isdigit():
         query = (
@@ -151,6 +151,84 @@ def lookup_gaia_photometry(gaia_id):
                         )
         except Exception:
             pass
+
+        if not photometry:
+            columns = [
+                "Source", "RA_ICRS", "DE_ICRS", "Plx", "e_Plx",
+                "pmRA", "e_pmRA", "pmDE", "e_pmDE",
+                "FG", "e_FG", "Gmag", "FBP", "e_FBP", "BPmag",
+                "FRP", "e_FRP", "RPmag",
+                "NAL", "MatchObsA", "o_Gmag", "o_BPmag", "o_RPmag", "o_RV",
+            ]
+            field_map = {
+                "ra": "RA_ICRS",
+                "dec": "DE_ICRS",
+                "parallax": "Plx",
+                "parallax_error": "e_Plx",
+                "pmra": "pmRA",
+                "pmra_error": "e_pmRA",
+                "pmdec": "pmDE",
+                "pmdec_error": "e_pmDE",
+                "phot_g_mean_mag": "Gmag",
+                "phot_bp_mean_mag": "BPmag",
+                "phot_rp_mean_mag": "RPmag",
+                "astrometric_n_obs_al": "NAL",
+                "astrometric_matched_transits": "MatchObsA",
+                "phot_g_n_obs": "o_Gmag",
+                "phot_bp_n_obs": "o_BPmag",
+                "phot_rp_n_obs": "o_RPmag",
+                "rv_nb_transits": "o_RV",
+            }
+            for vizier in configured_viziers(
+                columns=columns,
+                catalog="I/355/gaiadr3",
+                row_limit=2,
+            ):
+                try:
+                    results = vizier.query_constraints(
+                        Source="=" + str(gaia_id),
+                    )
+                except Exception:
+                    continue
+                if not results or not len(results[0]):
+                    continue
+                matching_row = None
+                for row in results[0]:
+                    source = row["Source"]
+                    if not np.ma.is_masked(source) and str(source) == str(gaia_id):
+                        matching_row = row
+                        break
+                if matching_row is None:
+                    continue
+
+                for target, source in field_map.items():
+                    value = matching_row[source]
+                    photometry[target] = (
+                        None if np.ma.is_masked(value) else float(value)
+                    )
+                photometry["ref_epoch"] = 2016.0
+                for band, flux_column, error_column in (
+                    ("g", "FG", "e_FG"),
+                    ("bp", "FBP", "e_FBP"),
+                    ("rp", "FRP", "e_FRP"),
+                ):
+                    flux = matching_row[flux_column]
+                    flux_error = matching_row[error_column]
+                    if (
+                        not np.ma.is_masked(flux)
+                        and not np.ma.is_masked(flux_error)
+                        and float(flux) > 0
+                        and float(flux_error) > 0
+                    ):
+                        signal_to_noise = float(flux) / float(flux_error)
+                        photometry[f"phot_{band}_mean_flux_over_error"] = signal_to_noise
+                        photometry[f"phot_{band}_mean_mag_error"] = (
+                            2.5 / np.log(10) / signal_to_noise
+                        )
+                photometry["gaia_service"] = (
+                    f"VizieR ({vizier.VIZIER_SERVER})"
+                )
+                break
 
     return photometry
 

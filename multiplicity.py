@@ -1,13 +1,49 @@
 """Gaia DR3 multiplicity indicators from Cifuentes et al. (2025)."""
 
+from io import BytesIO
+from urllib.parse import urlencode
+from urllib.request import urlopen
+
 import numpy as np
+from astropy.io.votable import parse
 from astroquery.gaia import Gaia
+from service_mirrors import configured_viziers
 
 GAIA_COLUMNS = (
     "ruwe", "ipd_gof_harmonic_amplitude", "ipd_frac_multi_peak",
     "rv_chisq_pvalue", "rv_renormalised_gof", "rv_nb_transits",
     "radial_velocity_error", "duplicated_source", "non_single_star",
 )
+
+VIZIER_COLUMNS = {
+    "ruwe": "RUWE",
+    "ipd_gof_harmonic_amplitude": "IPDgofha",
+    "ipd_frac_multi_peak": "IPDfmp",
+    "rv_chisq_pvalue": "RVchi2",
+    "rv_renormalised_gof": "RVgof",
+    "rv_nb_transits": "o_RV",
+    "radial_velocity_error": "e_RV",
+    "duplicated_source": "Dup",
+    "non_single_star": "NSS",
+}
+
+
+def _vizier_rows(columns, row_limit, **filters):
+    """Try each mirror; never turn a service failure into an empty result."""
+    last_error = None
+    for client in configured_viziers(
+        columns=columns, catalog="I/355/gaiadr3", row_limit=row_limit,
+    ):
+        try:
+            tables = client.query_constraints(**filters)
+            if tables and len(tables[0]):
+                required = set(columns)
+                if not required.issubset(tables[0].colnames):
+                    raise ValueError("The VizieR response is missing requested Gaia fields.")
+                return tables[0]
+        except Exception as error:
+            last_error = error
+    raise ConnectionError("No VizieR mirror returned the requested Gaia DR3 data.") from last_error
 
 
 def _number(value):
@@ -59,7 +95,20 @@ def query_rvs_reference(limit=20000):
           AND rv_renormalised_gof IS NOT NULL
           AND rv_nb_transits IS NOT NULL
     """
-    result = Gaia.launch_job_async(query).get_results()
+    try:
+        result = Gaia.launch_job_async(query).get_results()
+    except Exception:
+        parameters = urlencode({
+            "REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "votable",
+            "QUERY": query,
+        })
+        with urlopen("https://gaia.aip.de/tap/sync?" + parameters, timeout=45) as response:
+            document = parse(BytesIO(response.read()))
+        for resource in document.resources:
+            for info in resource.infos:
+                if info.name == "QUERY_STATUS" and info.value != "OK":
+                    raise RuntimeError(info.content or f"Gaia@AIP query status: {info.value}")
+        result = document.get_first_table().to_table(use_names_over_ids=True)
     sources = []
     for row in result:
         values = {
@@ -128,9 +177,18 @@ def query_gaia(source_id):
 
     columns = ", ".join(GAIA_COLUMNS)
     query = f"SELECT {columns} FROM gaiadr3.gaia_source WHERE source_id = {source_id}"
-    result = Gaia.launch_job(query).get_results()
-    if len(result) == 0:
-        return None
+    try:
+        result = Gaia.launch_job(query).get_results()
+    except Exception:
+        result = None
+    if result is None or len(result) == 0:
+        result = _vizier_rows(
+            ["Source", *VIZIER_COLUMNS.values()], 2, Source="=" + str(source_id),
+        )
+        result = result[[str(value) == str(source_id) for value in result["Source"]]]
+        if len(result) == 0:
+            raise ValueError("VizieR did not return the exact Gaia DR3 identifier.")
+        result.rename_columns(list(VIZIER_COLUMNS.values()), list(VIZIER_COLUMNS))
 
     row = result[0]
     values = {}

@@ -4,7 +4,24 @@ from math import cos, log10, radians
 
 import matplotlib.pyplot as plt
 import numpy as np
+import astropy.units as u
+from astropy.coordinates import SkyCoord
 from astroquery.gaia import Gaia
+
+from service_mirrors import configured_viziers
+
+
+VIZIER_NEIGHBOUR_COLUMNS = {
+    "source_id": "Source",
+    "ra": "RA_ICRS",
+    "dec": "DE_ICRS",
+    "parallax": "Plx",
+    "parallax_error": "e_Plx",
+    "pmra": "pmRA",
+    "pmdec": "pmDE",
+    "phot_g_mean_mag": "Gmag",
+    "ruwe": "RUWE",
+}
 
 
 def _number(value):
@@ -12,7 +29,8 @@ def _number(value):
     try:
         if np.ma.is_masked(value):
             return None
-        return float(value)
+        number = float(value)
+        return number if np.isfinite(number) else None
     except (TypeError, ValueError):
         return None
 
@@ -44,19 +62,46 @@ def query_gaia_neighbours(ra, dec, radius_arcsec=5, limit=500):
         WHERE {ra_condition}
           AND dec BETWEEN {dec - dec_delta:.8f} AND {dec + dec_delta:.8f}
     """
-    rows = Gaia.launch_job(query).get_results()
+    try:
+        rows = Gaia.launch_job(query).get_results()
+        columns = {name: name for name in VIZIER_NEIGHBOUR_COLUMNS}
+    except Exception:
+        centre = SkyCoord(ra=ra * u.deg, dec=dec * u.deg)
+        last_error = None
+        for client in configured_viziers(
+            columns=list(VIZIER_NEIGHBOUR_COLUMNS.values()),
+            row_limit=int(limit), timeout=20,
+        ):
+            try:
+                tables = client.query_region(
+                    centre, radius=float(radius_arcsec) * u.arcsec,
+                    catalog="I/355/gaiadr3",
+                )
+                if not tables:
+                    return []
+                rows = tables[0]
+                columns = VIZIER_NEIGHBOUR_COLUMNS
+                if not set(columns.values()).issubset(rows.colnames):
+                    raise ValueError("The VizieR Gaia DR3 table lacks neighbour fields.")
+                break
+            except Exception as error:
+                last_error = error
+        else:
+            raise ConnectionError(
+                "The nearby Gaia query failed on ESA and every VizieR mirror."
+            ) from last_error
     sources = []
     for row in rows:
         source = {
-            "source_id": str(row["source_id"]),
-            "ra": _number(row["ra"]),
-            "dec": _number(row["dec"]),
-            "parallax": _number(row["parallax"]),
-            "parallax_error": _number(row["parallax_error"]),
-            "pmra": _number(row["pmra"]),
-            "pmdec": _number(row["pmdec"]),
-            "g_mag": _number(row["phot_g_mean_mag"]),
-            "ruwe": _number(row["ruwe"]),
+            "source_id": str(row[columns["source_id"]]),
+            "ra": _number(row[columns["ra"]]),
+            "dec": _number(row[columns["dec"]]),
+            "parallax": _number(row[columns["parallax"]]),
+            "parallax_error": _number(row[columns["parallax_error"]]),
+            "pmra": _number(row[columns["pmra"]]),
+            "pmdec": _number(row[columns["pmdec"]]),
+            "g_mag": _number(row[columns["phot_g_mean_mag"]]),
+            "ruwe": _number(row[columns["ruwe"]]),
         }
         if source["ra"] is not None and source["dec"] is not None:
             delta_ra = (source["ra"] - ra + 180.0) % 360.0 - 180.0

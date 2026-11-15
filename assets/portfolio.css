@@ -1,0 +1,138 @@
+/* RUNA's visual system follows BUREAU/web/assets/css/site.css.
+   Keep widget behavior in Streamlit; scope these rules to presentation. */
+:root {
+  --runa-bg: #09090b;
+  --runa-surface: #111113;
+  --runa-text: #d4d4d8;
+  --runa-muted: #a1a1aa;
+  --runa-rule: #27272a;
+  --runa-accent: #6ee7b7;
+  --runa-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif;
+  --runa-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+.stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+  background: var(--runa-bg) !important; color: var(--runa-text);
+}
+html, body, .stApp, .stApp p, .stApp input, .stApp textarea {
+  font-family: var(--runa-sans) !important; -webkit-font-smoothing: antialiased;
+}
+.stMainBlockContainer {max-width: 1200px !important; padding: 5rem 2.5rem 5rem !important;}
+.stMarkdown p {line-height: 1.65;}
+.stApp h1 {font-family: var(--runa-sans); font-size: 2.8rem; font-weight: 600; letter-spacing: -.025em;}
+.stApp h2, .stApp h3 {font-family: var(--runa-sans); color: #f4f4f5; font-weight: 500; letter-spacing: -.015em;}
+.stApp h3 {font-size: 1.18rem !important; line-height: 1.5;}
+.runa-brand {display: flex; align-items: baseline; flex-wrap: wrap; gap: .7rem; margin-bottom: 2.6rem !important; font: .9rem/1.6 var(--runa-mono) !important; color: #767680;}
+.runa-brand a {text-decoration: none !important;}
+.runa-brand .runa-home {color: #fafafa !important; font-size: 1.15rem; font-weight: 500; letter-spacing: -.04em;}
+.runa-brand .runa-home span {color: var(--runa-accent);}
+section[data-testid="stSidebar"] {background: #111214 !important; border-right: 1px solid #232428 !important;}
+section[data-testid="stSidebar"][data-collapsed="false"] {width: 15.5rem !important; min-width: 15.5rem !important;}
+section[data-testid="stSidebar"][data-collapsed="true"] {width: 0 !important; min-width: 0 !important; border: 0 !important;}
+section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {padding: .65rem .7rem 1rem !important;}
+/* Streamlit's default one-rem block gap otherwise separates every menu row. */
+section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] [data-testid="stVerticalBlock"] {gap: 2px !important;}
+section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] [data-testid="stVerticalBlock"] {min-height: calc(100dvh - 2rem);}
+section[data-testid="stSidebar"] [data-testid="stImage"] {width: 160px !important; max-width: 160px !important; margin: .35rem .45rem 1rem !important;}
+section[data-testid="stSidebar"] [data-testid="stImage"] img {display: block !important; width: 160px !important; max-width: 160px !important; height: auto !important; image-rendering: auto;}
+/* Reserve space on Streamlit's outer row, where the next button is laid out. */
+section[data-testid="stSidebar"] [data-testid="stElementContainer"]:has(.runa-sidebar-group) {
+  min-height: 2rem !important; margin: 1.15rem 0 .45rem !important;
+  position: relative; z-index: 1;
+}
+.runa-sidebar-group {display:block; position:relative; margin:0; padding: .25rem 10px; color: #8b8d97; font: 500 .79rem/1.5 var(--runa-sans); text-transform: none; letter-spacing: 0;}
+.runa-sidebar-reference {font-size: 1.05rem; line-height: 1.4;}
+section[data-testid="stSidebar"] [data-testid="stElementContainer"] {flex-shrink:0 !important;}
+section[data-testid="stSidebar"] [data-testid="stButton"] {margin: 0 0 0 12px !important; width:calc(100% - 12px) !important; position:relative;}
+section[data-testid="stSidebar"] [data-testid="stButton"] button {
+  width: 100% !important; height: 36px !important; min-height: 36px !important; padding: 0 10px !important;
+  border: 0 !important; border-radius: 6px !important;
+  background: transparent !important; box-shadow: none !important;
+  display:flex !important; align-items:center !important;
+  justify-content: flex-start !important; text-align: left !important; gap:0 !important; color: #a6a7b0 !important;
+}
+section[data-testid="stSidebar"] [data-testid="stButton"] button > div,
+section[data-testid="stSidebar"] [data-testid="stButton"] button [data-testid="stMarkdownContainer"] {
+  display: block !important; width: 100% !important;
+  margin-left: 0 !important; margin-right: auto !important;
+  text-align: left !important;
+}
+section[data-testid="stSidebar"] [data-testid="stButton"] button p {
+  display: block !important; width: 100% !important;
+  font: 500 .94rem/1.25 var(--runa-sans) !important;
+  margin: 0 !important; text-align: left !important;
+}
+section[data-testid="stSidebar"] [data-testid="stButton"] button:hover {background: #1c1d21 !important; color: #e2e2e7 !important;}
+section[data-testid="stSidebar"] [data-testid="stButton"] button[data-testid="stBaseButton-primary"],
+section[data-testid="stSidebar"] [data-testid="stButton"] button[data-testid="stBaseButton-primary"]:hover {
+  color: var(--runa-accent) !important; background: transparent !important;
+}
+section[data-testid="stSidebar"] [data-testid="stButton"] button[data-testid="stBaseButton-primary"] p {color: var(--runa-accent) !important;}
+.runa-sidebar-link {margin: 2rem .6rem .5rem; font: .75rem/2 var(--runa-sans); color: #73757f;}
+.runa-sidebar-link a {text-decoration: none !important;}
+section[data-testid="stSidebar"] [data-testid="stElementContainer"]:has(.runa-sidebar-credit) {margin-top: auto !important;}
+.runa-sidebar-credit {margin: 1.5rem .6rem .3rem; color: #777780; font: .75rem/1.5 var(--runa-sans);}
+.stApp .stMarkdown a:hover, .stApp .stCaption a:hover {color: var(--runa-accent) !important;}
+.stApp button {border-radius: 4px;}
+.stApp button p {font-family: var(--runa-mono) !important; font-size: .85rem;}
+.stApp button:focus-visible, .stApp a:focus-visible {outline: 2px solid var(--runa-accent) !important; outline-offset: 3px;}
+[data-testid="stForm"] {padding: 0 !important;}
+section[data-testid="stSidebar"] .st-key-runa_object_name {margin: 0 .35rem 1rem !important;}
+section[data-testid="stSidebar"] .st-key-runa_object_name [data-testid="stTextInputRootElement"] {background: #1b1c20 !important; border: 0 !important; box-shadow: none !important;}
+section[data-testid="stSidebar"] .st-key-runa_object_name input {font: 400 .88rem/1.4 var(--runa-sans) !important; color: #ececf0 !important;}
+.stApp [data-testid="stTextInputRootElement"], .stApp [data-baseweb="select"] > div {background: var(--runa-surface); border-radius: 5px;}
+/* Quiet surfaces throughout the scientific tools, including module-local styles. */
+.stApp [data-testid="stVerticalBlockBorderWrapper"],
+.stApp [data-testid="stLayoutWrapper"] > [data-testid="stVerticalBlock"][style*="border"],
+.stApp [class*="st-key-parameters_"],
+.stApp [class*="st-key-photometry_published_"],
+.stApp [class*="st-key-photometry_estimated_"],
+.stApp [class*="st-key-"][class*="_card"],
+.stApp .runa-class-card, .stApp .runa-object-head,
+.stApp .runa-data-section, .stApp .runa-parameter-section,
+.stApp .runa-distance-step, .stApp .runa-volume,
+.stApp .runa-ml-draft-status, .stApp .model-flow-step,
+.stApp .model-split-card, .stApp .model-selection,
+.stApp .model-context-card, .stApp .binarity-model-step,
+.stApp .binarity-model-split-card, .stApp .binarity-sample-source,
+.stApp .binarity-sample-ready, .stApp .binarity-sample-branch,
+.stApp .runa-indicator-table, .stApp .runa-neighbour-table,
+.stApp .runa-planet-table, .stApp .runa-cifuentes-scroll,
+.stApp .runa-photometry-table {
+  border: 0 !important; box-shadow: none !important; border-radius: 6px !important;
+  background: var(--runa-surface) !important;
+}
+.stApp .runa-panel-heading, .stApp .runa-section-title,
+.stApp .runa-parameter-kind, .stApp .model-flow-step small,
+.stApp .model-split-card small {
+  font-family: var(--runa-mono) !important; font-size: .75rem !important;
+  font-weight: 400 !important; letter-spacing: .09em !important;
+  color: var(--runa-muted) !important;
+}
+.stApp .runa-panel-object {font-size: 1.1rem !important; font-weight: 500 !important; color: #f4f4f5 !important;}
+.stApp .runa-class-value, .stApp .parameter-number,
+.stApp .runa-parameter-value, .stApp .runa-large-metric-value,
+.stApp .parameter-additional-value,
+.stApp .model-flow-step strong, .stApp .model-split-card strong,
+.stApp .model-context-card strong, .stApp .binarity-model-step strong,
+.stApp .binarity-model-split-card strong, .stApp .binarity-sample-source strong,
+.stApp .binarity-sample-ready strong, .stApp .binarity-sample-branch strong {
+  color: #e4e4e7 !important; font-weight: 500 !important;
+}
+.stApp .runa-class-label, .stApp .runa-data-label,
+.stApp .parameter-name, .stApp .runa-parameter-label {color: var(--runa-muted) !important; font-weight: 400 !important;}
+.stApp .parameter-reference, .stApp .parameter-reference a,
+.stApp .parameter-method, .stApp .runa-parameter-source {color: #85858e !important;}
+.stApp .runa-data-value, .stApp .runa-summary-value {font-variant-numeric: tabular-nums; font-weight: 500 !important;}
+.stApp .runa-parameter-published .runa-parameter-kind,
+.stApp .runa-parameter-estimated .runa-parameter-kind {color: var(--runa-muted) !important;}
+.stApp .runa-criteria-caution {color: #f4cf75 !important; font-weight: 600 !important; margin: .35rem 0 .8rem !important;}
+.stApp .runa-chip, .stApp .runa-learning-badge {background: #18181b !important; color: var(--runa-muted) !important; border: 0 !important; border-radius: 4px !important; font-weight: 400 !important;}
+.stApp .binarity-feature-groups span {border: 0 !important; background: #18181b; border-radius: 4px !important;}
+.stApp [data-testid="stExpander"] details {border: 0 !important; border-radius: 4px !important; background: var(--runa-surface);}
+.runa-section-context {display: flex; gap: .8rem; align-items: baseline; flex-wrap: wrap; padding-bottom: 1rem; margin-bottom: 1.25rem; border-bottom: 1px solid var(--runa-rule); font: .8rem/1.5 var(--runa-mono); color: var(--runa-muted);}
+.runa-section-context strong {color: #f4f4f5; font: 600 1.5rem/1.2 var(--runa-sans); letter-spacing: -.02em;}
+@media (max-width: 850px) {
+  .stMainBlockContainer {padding: 4.5rem 1.25rem 3rem !important;}
+  .runa-brand {margin-bottom: 1.8rem !important;}
+  .runa-kinematic-inputs .runa-data-row {grid-template-columns: minmax(0, 1fr) auto !important; grid-template-areas: "label label" "value unit" "source source";}
+}

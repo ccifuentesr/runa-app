@@ -965,15 +965,24 @@ def gaia_reference_sample():
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def nearby_gaia_sources_v2(ra, dec, radius_arcsec):
-    """Keep a small Gaia cone query for one day."""
+def nearby_gaia_sources_v3(ra, dec, radius_arcsec):
+    """Cache a Gaia cone query with VizieR fallback for one day."""
     return query_gaia_neighbours(ra, dec, radius_arcsec)
+
+
+class GaiaPhotometryUnavailable(RuntimeError):
+    """Raised when neither Gaia ESA nor VizieR returns a DR3 source."""
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def gaia_source_photometry(gaia_id):
-    """Keep Gaia source observations and photometry for one day."""
-    return lookup_gaia_photometry(gaia_id)
+    """Cache Gaia photometry and observation counts with VizieR fallback."""
+    photometry = lookup_gaia_photometry(gaia_id)
+    if gaia_id and not photometry:
+        raise GaiaPhotometryUnavailable(
+            "Neither Gaia ESA nor the VizieR mirrors returned this DR3 source."
+        )
+    return photometry
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -989,8 +998,8 @@ def wds_closest_component(ra, dec, identifiers):
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def rvs_reference_sample():
-    """Keep the ten-parsec Gaia RV comparison sample for one day."""
+def rvs_reference_sample_v2():
+    """Cache the ten-parsec Gaia RV sample with Gaia@AIP fallback."""
     return query_rvs_reference()
 
 
@@ -1030,7 +1039,11 @@ def archival_spectroscopy_search_v4(ra, dec, pmra, pmdec, reference_epoch):
     return search_spectroscopy_archives(ra, dec, pmra, pmdec, reference_epoch)
 
 
-st.set_page_config(page_title="RUNA · Stellar characterisation", layout="wide")
+st.set_page_config(
+    page_title="RUNA",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 st.markdown(
     """
@@ -1039,11 +1052,6 @@ st.markdown(
     .runa-brand {font-size: 1rem; color: #a1a1aa; margin-bottom: 2.8rem;}
     .runa-brand strong {color: #fafafa; font-weight: 600;}
     .runa-brand span {color: #6ee7b7;}
-    .runa-eyebrow {color: #a1a1aa; font-size: .75rem; letter-spacing: .1em; text-transform: uppercase;}
-    .runa-title {color: #fafafa; font-size: 3.25rem; font-weight: 700;
-                 letter-spacing: -.035em; line-height: 1; margin-top: .95rem;}
-    .runa-version {color: #a1a1aa; font-size: .9rem; margin: .42rem 0 1.1rem;}
-    .runa-tagline {color:#92929d;font-size:1.08rem;line-height:1.4;white-space:nowrap;margin:.15rem 0 1.45rem;}
     div[data-testid="stSpinner"],
     div[data-testid="stSpinner"] * {color:#fafafa !important;}
     div[data-testid="stSpinner"] svg,
@@ -1056,12 +1064,75 @@ st.markdown(
                                  text-decoration-color: #60606a;
                                  text-underline-offset: .16em;}
     .stMarkdown a:hover, .stCaption a:hover {color: #f4f4f5 !important;}
-    .st-key-runa_main_nav button {border-radius: 0; height: 2.25rem; min-height: 2.25rem;}
-    .st-key-runa_main_nav * {border-radius: 0 !important;}
-    .st-key-runa_data_button button,
-    .st-key-runa_models_button button {
-        height: 2.25rem; min-height: 2.25rem; border-radius: 12px;
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #171a1c 0%, #121517 100%);
+        border-right: 1px solid #2a2d30;
     }
+    section[data-testid="stSidebar"][data-collapsed="false"] {
+        width: 15.25rem !important;
+        min-width: 15.25rem !important;
+    }
+    section[data-testid="stSidebar"][data-collapsed="true"] {
+        width: 0 !important;
+        min-width: 0 !important;
+        border-right: 0;
+    }
+    section[data-testid="stSidebar"],
+    section[data-testid="stSidebar"] button,
+    section[data-testid="stSidebar"] p {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+    }
+    div[data-testid="stSidebarCollapseButton"] button,
+    div[data-testid="stExpandSidebarButton"] button {
+        width: 1.75rem; height: 1.75rem; min-height: 1.75rem;
+        border-radius: 6px; background: transparent !important;
+        color: #777780 !important; box-shadow: none !important;
+    }
+    div[data-testid="stSidebarCollapseButton"] button:hover,
+    div[data-testid="stExpandSidebarButton"] button:hover {
+        background: #242428 !important; color: #e4e4e7 !important;
+    }
+    div[data-testid="stSidebarCollapseButton"] svg,
+    div[data-testid="stExpandSidebarButton"] svg {
+        width: 1rem; height: 1rem;
+    }
+    div[data-testid="stSidebarHeader"] {
+        position: relative; height: 0 !important; min-height: 0 !important;
+        padding: 0 !important; margin: 0 !important;
+    }
+    div[data-testid="stLogoSpacer"] {display: none !important;}
+    div[data-testid="stSidebarCollapseButton"] {
+        position: absolute; top: .78rem; right: .72rem; z-index: 10;
+    }
+    section[data-testid="stSidebar"] > div {padding-top: .45rem;}
+    section[data-testid="stSidebar"] div[data-testid="stSidebarContent"] {
+        padding: .4rem .7rem 1rem;
+    }
+    .runa-linear-header {
+        display: flex; align-items: center; justify-content: space-between;
+        min-height: 2.65rem; margin: .05rem .48rem 1rem;
+    }
+    .runa-linear-workspace {
+        display: flex; align-items: center; gap: .62rem;
+        color: #eceeef; font-size: 1rem; font-weight: 620;
+        letter-spacing: -.01em;
+    }
+    .runa-linear-mark {
+        display: inline-block; width: 1.15rem; height: 1.15rem; border-radius: 50%;
+        flex: 0 0 1.15rem;
+        background: repeating-linear-gradient(45deg, #e7e9ea 0 2px,
+                    #7d8287 2px 3px); opacity: .95;
+    }
+    .runa-linear-workspace-chevron {
+        color: #74797f; font-size: .9rem; font-weight: 500;
+        transform: translateY(-.05rem);
+    }
+    .runa-linear-section {
+        color: #7d8288; font-size: .82rem; font-weight: 540;
+        letter-spacing: -.005em; line-height: 1.3;
+        margin: 1.22rem .48rem .4rem;
+    }
+    .runa-linear-section span {font-size: .62rem; margin-left: .2rem;}
     .runa-note {color: #a1a1aa; font-size: .9rem;}
     .runa-filter-reference {color: #a1a1aa; font-size: .875rem;
                             line-height: 1.4; margin: 0 0 .65rem;}
@@ -1235,6 +1306,26 @@ st.markdown(
                      white-space: nowrap;}
     .runa-data-source {color: #777782; font-size: .72rem; text-align: right;
                        white-space: nowrap; padding-top: .08rem; justify-self: end;}
+    .runa-kinematic-inputs .runa-data-row {
+        grid-template-columns: minmax(8.5rem, 1.05fr) minmax(8.75rem, 1.2fr)
+                               minmax(4rem, .5fr);
+        grid-template-areas:
+            "label value unit"
+            "source value unit";
+        column-gap: .75rem; row-gap: .12rem;
+        padding: .72rem .85rem;
+    }
+    .runa-kinematic-inputs .runa-data-label {grid-area: label; padding-left: 0;}
+    .runa-kinematic-inputs .runa-data-value {
+        grid-area: value; align-self: center;
+        white-space: nowrap; overflow-wrap: normal;
+    }
+    .runa-kinematic-inputs .runa-data-unit {
+        grid-area: unit; align-self: center; white-space: nowrap;
+    }
+    .runa-kinematic-inputs .runa-data-source {
+        grid-area: source; justify-self: start; text-align: left; padding-top: 0;
+    }
     .runa-identification-data .runa-section-title {color:#81818b;font-size:.82rem;
                          font-weight:650;letter-spacing:.08em;text-transform:uppercase;
                          padding-top:.75rem;padding-bottom:.55rem;}
@@ -1466,6 +1557,36 @@ st.markdown(
     .st-key-photometry_published_summary .runa-panel-object span {
         color: #92929d; font-size: .76rem; font-weight: 400; letter-spacing: .06em;
     }
+    div[data-testid="stVerticalBlockBorderWrapper"],
+    div[class*="st-key-"][class*="_card"],
+    div[class*="st-key-photometry_published_"],
+    div[class*="st-key-photometry_estimated_"],
+    div[class*="st-key-kinematics_"],
+    div[class*="st-key-multiplicity_"],
+    div[class*="st-key-planets_"],
+    .runa-warning-tooltip,
+    .runa-learning-badge,
+    .runa-caution-note,
+    .runa-distance-step,
+    .runa-volume,
+    .runa-indicator-table,
+    .runa-indicator-met,
+    .runa-indicator-not-met,
+    .runa-indicator-unavailable,
+    .runa-identification-head .runa-object-head,
+    .runa-class-card,
+    .runa-data-section,
+    .runa-parameter-section,
+    .runa-ml-draft-status,
+    .runa-neighbour-table,
+    .runa-neighbour-badge,
+    .runa-planet-table,
+    .runa-cifuentes-scroll,
+    .runa-photometry-table,
+    .runa-chip {
+        border: 0 !important;
+        box-shadow: none !important;
+    }
     @media (max-width: 700px) {
         .runa-distance-flow {grid-template-columns:1fr;gap:.4rem;}
         .runa-distance-arrow {transform:rotate(90deg);}
@@ -1491,8 +1612,7 @@ st.markdown(
         }
     }
     </style>
-    <div class="runa-brand"><strong>C. Cifuentes</strong><span>_</span> / Projects / RUNA</div>
-    <div class="runa-eyebrow">Stellar characterisation</div>
+    <div class="runa-brand"><a class="runa-home" href="https://ccifuentesr.github.io/index.html" target="_blank">C. Cifuentes<span>_</span></a><span>/</span><a href="https://ccifuentesr.github.io/projects.html" target="_blank">Projects</a><span>/ RUNA</span></div>
     """,
     unsafe_allow_html=True,
 )
@@ -1522,77 +1642,89 @@ if current_tool not in [*available_tools, "Data", "Models"]:
     current_tool = "Identification"
 if "runa_tool" not in st.session_state:
     st.session_state["runa_tool"] = current_tool
-if "runa_main_nav" not in st.session_state:
-    st.session_state["runa_main_nav"] = (
-        current_tool if current_tool in available_tools else None
-    )
 
 
-def select_main_tool():
-    st.session_state["runa_tool"] = st.session_state["runa_main_nav"]
+def select_tool(tool_name):
+    """Select a RUNA section from the persistent left navigation."""
+    st.session_state["runa_tool"] = tool_name
 
 
-def select_data_tool():
-    st.session_state["runa_tool"] = "Data"
-    st.session_state["runa_main_nav"] = None
+def request_object_search():
+    """Run the object lookup when the sidebar field is submitted."""
+    st.session_state["runa_search_requested"] = True
 
 
-def select_models_tool():
-    st.session_state["runa_tool"] = "Models"
-    st.session_state["runa_main_nav"] = None
-
-
-header_title, header_search = st.columns([1.15, 1], gap="large")
-with header_title:
-    st.markdown(
-        '<div class="runa-title">RUNA</div>'
-        '<div class="runa-version">v20261026</div>',
-        unsafe_allow_html=True,
-    )
-with header_search:
-    # A form makes Return/Enter submit the same search as the RUN button.
-    with st.form(
-        "runa_object_search", border=False, enter_to_submit=True,
-    ):
-        search_name, search_button = st.columns([2.2, 0.75], gap="small")
-        with search_name:
-            top_name = st.text_input(
-                "Object name", placeholder="e.g. Proxima Cen",
-                label_visibility="collapsed", key="runa_object_name",
-            )
-        with search_button:
-            top_submitted = st.form_submit_button(
-                "RUN", use_container_width=True,
-            )
+navigation_sections = (
+    (
+        None,
+        (
+            ("Identification", ":material/manage_search:"),
+            ("Photometry", ":material/gradient:"),
+            ("Parameters", ":material/tune:"),
+            ("Kinematics", ":material/route:"),
+            ("Multiplicity", ":material/hub:"),
+            ("Planets", ":material/public:"),
+        ),
+    ),
+    (
+        "Reference",
+        (
+            ("Data", ":material/table_view:"),
+            ("Models", ":material/model_training:"),
+        ),
+    ),
+)
 
 st.markdown(
-    '<div class="runa-tagline">For stellar characterisation · currently optimised for M dwarfs · '
-    'expanding to other stellar types and objects.</div>',
+    "<style>" + (Path(__file__).resolve().parent / "assets" / "portfolio.css").read_text(encoding="utf-8") + "</style>",
     unsafe_allow_html=True,
 )
 
-menu_col, data_col, models_col = st.columns([7, 0.85, 0.85], gap="small")
-with menu_col:
-    st.segmented_control(
-        "RUNA tool", available_tools, label_visibility="collapsed",
-        key="runa_main_nav", on_change=select_main_tool,
+with st.sidebar:
+    st.image(
+        str(Path(__file__).resolve().parent / "assets" / "runa-logo-sidebar.png"),
+        width=320,
     )
-with data_col:
-    st.button(
-        "Data", use_container_width=True,
-        type="secondary",
-        key="runa_data_button",
-        on_click=select_data_tool,
+    top_name = st.text_input(
+        "Object name", placeholder="Search object…",
+        label_visibility="collapsed", key="runa_object_name",
+        on_change=request_object_search,
     )
-with models_col:
-    st.button(
-        "Models", use_container_width=True,
-        type="secondary", key="runa_models_button",
-        on_click=select_models_tool,
+    top_submitted = bool(
+        st.session_state.pop("runa_search_requested", False) and top_name.strip()
+    )
+    for section_name, section_items in navigation_sections:
+        if section_name:
+            st.markdown(
+                f'<div class="runa-sidebar-group runa-sidebar-{section_name.lower()}">{section_name}</div>',
+                unsafe_allow_html=True,
+            )
+        for tool_name, icon in section_items:
+            st.button(
+                tool_name,
+                use_container_width=True,
+                type="primary" if current_tool == tool_name else "secondary",
+                key=f"runa_linear_{tool_name.lower()}",
+                on_click=select_tool,
+                args=(tool_name,),
+            )
+    st.markdown(
+        '<div class="runa-sidebar-link"><a href="https://ccifuentesr.github.io/runa.html" target="_blank">About RUNA ↗</a><br><a href="https://ccifuentesr.github.io/index.html" target="_blank">C. Cifuentes ↗</a></div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="runa-sidebar-credit">© 2026 C. Cifuentes</div>',
+        unsafe_allow_html=True,
     )
 
 tool = st.session_state["runa_tool"]
 star = st.session_state["star"]
+st.markdown(
+    '<div class="runa-section-context">'
+    f'<strong>{escape(tool)}</strong>'
+    f'<span>{escape(str(star["main_id"])) if star else "No object loaded"}</span></div>',
+    unsafe_allow_html=True,
+)
 search_error = None
 if top_submitted:
     with st.spinner("Loading star and catalogue data...", show_time=True):
@@ -1616,7 +1748,11 @@ if top_submitted:
                 search_error = "No object was found for that name."
             else:
                 data["query_name"] = top_name.strip()
-                data["gaia_photometry"] = gaia_source_photometry(data["gaia_id"])
+                try:
+                    data["gaia_photometry"] = gaia_source_photometry(data["gaia_id"])
+                except GaiaPhotometryUnavailable as error:
+                    data["gaia_photometry"] = {}
+                    data["gaia_photometry_error"] = str(error)
                 data["twomass_photometry"] = lookup_2mass_j(data["twomass_id"])
                 data["johnson_photometry"] = lookup_johnson_v(data["main_id"])
                 data["survey_image"] = fetch_survey_image(data["ra"], data["dec"])
@@ -2098,9 +2234,7 @@ elif tool == "Photometry":
                 '<p class="runa-filter-reference">The '
                 '<a href="https://svo2.cab.inta-csic.es/theory/fps/" '
                 'target="_blank">Carlos Rodrigo Filter Profile Service</a> '
-                '(<a href="https://ui.adsabs.harvard.edu/abs/2020sea..confE.182R/abstract" '
-                'target="_blank">Rodrigo et al. 2020</a>) is the reference for '
-                'the filter profiles used here.</p>',
+                'is the reference for the filter profiles.</p>',
                 unsafe_allow_html=True,
             )
             if st.button(
@@ -2623,7 +2757,11 @@ elif tool == "Kinematics":
                             unit,
                         )
                     )
-            data_section("Kinematic inputs", input_rows)
+            data_section(
+                "Kinematic inputs",
+                input_rows,
+                class_name="runa-kinematic-inputs",
+            )
 
     with result_card:
         panel_heading("Kinematic population prediction")
@@ -2905,7 +3043,11 @@ elif tool == "Multiplicity":
                 f'<strong>{escape(str(star["gaia_id"]))}</strong></div>',
                 unsafe_allow_html=True,
             )
-            gaia_counts = gaia_source_photometry(star["gaia_id"])
+            try:
+                gaia_counts = gaia_source_photometry(star["gaia_id"])
+            except GaiaPhotometryUnavailable as error:
+                gaia_counts = {}
+                st.warning(str(error))
 
             def formatted_count(field):
                 value = gaia_counts.get(field)
@@ -2964,7 +3106,7 @@ elif tool == "Multiplicity":
             gaia_dec = star["gaia_photometry"].get("dec", star["dec"])
             try:
                 with st.spinner("Loading nearby Gaia sources..."):
-                    nearby = nearby_gaia_sources_v2(
+                    nearby = nearby_gaia_sources_v3(
                         gaia_ra, gaia_dec, radius_arcsec
                     )
                 nearby = prepare_neighbours(nearby, gaia_ra, gaia_dec)
@@ -3039,7 +3181,8 @@ elif tool == "Multiplicity":
         else:
             values, _ = answer
             multiplicity_ml_result(values)
-        with st.expander("Multiplicity criteria", expanded=False):
+        with st.container():
+            panel_heading("Multiplicity criteria")
             st.caption("Based on Cifuentes et al. (2025), Table 3.")
             if query_error:
                 st.error(query_error)
@@ -3053,11 +3196,23 @@ elif tool == "Multiplicity":
                 if strong_indicators:
                     st.write("**One or more multiplicity indicators are met.**")
                 elif criteria[6]:
-                    st.write("**Only the supporting duplicated-source flag is met.**")
+                    st.markdown(
+                        '<p class="runa-criteria-caution">Only the supporting '
+                        'duplicated-source flag is met.</p>',
+                        unsafe_allow_html=True,
+                    )
                 elif all(result is None for result in criteria.values()):
-                    st.write("**Gaia has no values for these criteria.**")
+                    st.markdown(
+                        '<p class="runa-criteria-caution">Gaia has no values '
+                        'for these criteria.</p>',
+                        unsafe_allow_html=True,
+                    )
                 else:
-                    st.write("**No available criterion is met.**")
+                    st.markdown(
+                        '<p class="runa-criteria-caution">No available '
+                        'criterion is met.</p>',
+                        unsafe_allow_html=True,
+                    )
                 multiplicity_table(values, criteria)
                 st.caption(
                     "These indicators suggest possible multiplicity, but do not confirm a companion."
@@ -3276,7 +3431,7 @@ elif tool == "Multiplicity":
         else:
             try:
                 with st.spinner("Loading Gaia stars within 10 pc..."):
-                    rvs_reference = rvs_reference_sample()
+                    rvs_reference = rvs_reference_sample_v2()
                 rvs_reference = [
                     source for source in rvs_reference
                     if source.get("source_id") != str(star["gaia_id"])
