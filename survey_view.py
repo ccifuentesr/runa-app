@@ -10,7 +10,7 @@ def survey_image_view(image_bytes):
     mime = "image/png" if image_bytes.startswith(b"\x89PNG") else "image/jpeg"
     st.markdown(
         '<style>'
-        '.runa-survey-view {position:relative;width:512px;max-width:100%;}'
+        '.runa-survey-view {position:relative;width:100%;}'
         '.runa-survey-view img {display:block;width:100%;height:auto;}'
         '.runa-survey-view .centre-mark {position:absolute;pointer-events:none;'
         'background:#d4d4d8;opacity:.9;}'

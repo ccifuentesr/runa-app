@@ -123,7 +123,5 @@ def polar_position_plot(star):
                edgecolor="#111113", linewidth=0.6, zorder=5)
     ax.scatter([alpha], [distance], s=70, c="#6ee7b7",
                edgecolor="#111113", linewidth=0.8, zorder=6)
-    ax.set_title("Position around the Sun", color="#f4f4f5",
-                 fontsize=13, pad=14)
     fig.tight_layout()
     return fig

@@ -1,10 +1,15 @@
 """Photometry utilities used by the Photometry section."""
 
+from io import BytesIO
 import re
+import logging
 from pathlib import Path
+from urllib.parse import urlencode
+from urllib.request import urlopen
 
 import numpy as np
 import astropy.units as u
+from astropy.io.votable import parse
 from astroquery.gaia import Gaia
 from catalogue_selection import OPTICAL_PRIORITY, preferred_photometry
 from service_mirrors import configured_viziers
@@ -15,6 +20,7 @@ FILTER_DIR = DATA_DIR / "filters"
 VOSA_FILTER_FILE = FILTER_DIR / "VOSA_filters.csv"
 BAND_METADATA_FILE = FILTER_DIR / "catalogue_bands.csv"
 FILTER_CURVES_FILE = FILTER_DIR / "filter_curves.csv"
+LOGGER = logging.getLogger(__name__)
 
 
 def _load_band_metadata():
@@ -441,7 +447,29 @@ def load_gaia_reference_sample():
           AND phot_bp_mean_mag IS NOT NULL
           AND phot_rp_mean_mag IS NOT NULL
     """
-    rows = Gaia.launch_job_async(query).get_results()
+    try:
+        rows = Gaia.launch_job_async(query).get_results()
+    except Exception as esa_error:
+        LOGGER.warning("Gaia CMD sample query failed on ESA; trying Gaia@AIP", exc_info=esa_error)
+        parameters = urlencode({
+            "REQUEST": "doQuery", "LANG": "ADQL", "FORMAT": "votable",
+            "QUERY": query,
+        })
+        try:
+            with urlopen(
+                "https://gaia.aip.de/tap/sync?" + parameters, timeout=60
+            ) as response:
+                document = parse(BytesIO(response.read()))
+            for resource in document.resources:
+                for info in resource.infos:
+                    if info.name == "QUERY_STATUS" and info.value == "ERROR":
+                        raise RuntimeError(info.content or "Gaia@AIP query failed")
+            rows = document.get_first_table().to_table(use_names_over_ids=True)
+        except Exception as mirror_error:
+            LOGGER.exception("Gaia CMD sample query failed on Gaia@AIP")
+            raise ConnectionError(
+                "The Gaia reference sample could not be loaded from ESA or Gaia@AIP."
+            ) from mirror_error
 
     parallax = np.asarray(rows["parallax"], dtype=float)
     g_mag = np.asarray(rows["phot_g_mean_mag"], dtype=float)

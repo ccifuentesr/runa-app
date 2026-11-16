@@ -1,6 +1,7 @@
 """Look up planets in NASA's archive and Open Exoplanet Catalogue."""
 
 import gzip
+from html import unescape
 import json
 import math
 import csv
@@ -65,7 +66,7 @@ def _tap_query(names, gaia_id=None):
     if gaia_id is not None and str(gaia_id).isdigit():
         conditions.append(f"gaia_dr3_id = 'Gaia DR3 {gaia_id}'")
     return (
-        "SELECT TOP 100 hostname, pl_name, discoverymethod, disc_year, "
+        "SELECT TOP 100 hostname, pl_name, discoverymethod, disc_year, disc_refname, "
         "pl_orbper, pl_orbsmax, pl_orbeccen, pl_rade, pl_masse, "
         "pl_bmasse, pl_bmassprov, pl_bmasselim, sy_pnum, sy_dist FROM pscomppars WHERE "
         + " OR ".join(conditions)
@@ -240,6 +241,28 @@ def merge_planets(nasa_planets, oec_planets):
             item.get("pl_name") or "",
         ),
     )
+
+
+def discovery_references(planets):
+    """Return distinct confirmed-planet discovery citations by publication year."""
+    references = set()
+    for planet in planets:
+        if planet.get("status") != "Confirmed":
+            continue
+        raw = planet.get("disc_refname")
+        if not raw:
+            continue
+        text = " ".join(unescape(re.sub(r"<[^>]*>", "", str(raw))).split())
+        match = re.search(r"^(.+?)\s+(et al\.?)\s*,?\s*\(?((?:19|20)\d{2})\)?", text, re.I)
+        if match:
+            author, _, year = match.groups()
+            references.add((int(year), f"{author.strip(' ,')} et al. ({year})"))
+            continue
+        match = re.search(r"^(.+?)\s*,?\s*\(?((?:19|20)\d{2})\)?", text)
+        if match:
+            author, year = match.groups()
+            references.add((int(year), f"{author.strip(' ,')} ({year})"))
+    return [reference for _, reference in sorted(references)]
 
 
 def orbital_mass(planet):

@@ -5,6 +5,7 @@ from io import StringIO
 from pathlib import Path
 from decimal import Decimal
 from html import escape
+import re
 from urllib.parse import quote
 
 import streamlit as st
@@ -12,6 +13,16 @@ from parameters import radius_from_luminosity_temperature, mass_from_luminosity_
 
 
 BIBCODES_FILE = Path(__file__).with_name("data") / "bibcodes.csv"
+
+
+def compact_paper_citation(text):
+    """Shorten author-year citations for compact table source columns."""
+    value = str(text or "")
+    return re.sub(
+        r"\s+et al\.\s*\((20\d{2})\)",
+        lambda match: "+" + match.group(1)[-2:],
+        value,
+    )
 
 
 def load_bibcodes():
@@ -142,7 +153,7 @@ def measurement_cell(row):
 def reference_cell(row, estimated=False):
     if row is None:
         return "—"
-    reference = escape(str(row[2] or "Source unavailable"))
+    reference = escape(compact_paper_citation(row[2] or "Source unavailable"))
     if estimated:
         label = escape(str(row[0]))
         label = label.replace("M_G", "M<sub>G</sub>").replace("M_J", "M<sub>J</sub>")
@@ -209,15 +220,10 @@ def additional_measurements_panel(measurements):
         ("rotation_period", "P<sub>rot</sub>", "d"),
         ("spectral_type", "SpT", ""),
     )
-    with st.container(border=True, key="parameters_additional"):
-        panel_heading("Additional literature measurements")
-        content = []
+    with st.expander("Additional literature measurements", expanded=False):
+        rows = []
         for key, label, unit in sections:
-            records = measurements.get(key, [])
-            if not records:
-                continue
-            entries = []
-            for record in records:
+            for record in measurements.get(key, []):
                 value = record["value"]
                 if key == "metallicity":
                     value_text = f"{value:.3f}"
@@ -236,26 +242,28 @@ def additional_measurements_panel(measurements):
                     if error is not None else ""
                 )
                 bibcode = str(record["bibcode"])
+                short_bibcode = bibcode.split(".", 1)[0]
                 reference_url = (
                     "https://ui.adsabs.harvard.edu/abs/"
                     + quote(bibcode, safe="") + "/abstract"
                 )
-                entries.append(
-                    '<div class="parameter-entry">'
-                    f'<div class="parameter-measurement"><span class="parameter-additional-value">'
-                    f'{escape(value_text)}{error_html}</span></div>'
-                    '<div class="parameter-reference">'
+                unit_html = escape(unit) if unit else ""
+                rows.append(
+                    '<div class="runa-data-row runa-parameter-compact-row">'
+                    f'<span class="runa-data-label">{label}</span>'
+                    f'<span class="runa-data-value">{escape(value_text)}{error_html}</span>'
+                    f'<span class="runa-data-unit">{unit_html}</span>'
+                    '<span class="runa-data-source">'
                     f'<a href="{escape(reference_url, quote=True)}" target="_blank" '
-                    f'rel="noopener noreferrer">{escape(bibcode)}</a></div></div>'
+                    f'rel="noopener noreferrer" title="{escape(bibcode, quote=True)}">'
+                    f'{escape(short_bibcode)}</a></span></div>'
                 )
-            unit_html = f'<span class="parameter-unit">{escape(unit)}</span>' if unit else ""
-            content.append(
-                '<section class="parameter-block">'
-                f'<div class="parameter-name">{label}{unit_html}</div>'
-                + "".join(entries) + '</section>'
+        if rows:
+            st.markdown(
+                '<section class="runa-data-section runa-parameter-compact runa-literature-measurements">'
+                + "".join(rows) + '</section>',
+                unsafe_allow_html=True,
             )
-        if content:
-            st.markdown("".join(content), unsafe_allow_html=True)
             st.caption("SIMBAD measurement collections. Rotation periods include ROT-classified entries only.")
             if measurements.get("unavailable"):
                 st.caption("Some SIMBAD collections could not be loaded.")
@@ -293,7 +301,14 @@ def stellar_parameter_table(groups, additional_measurements=None):
         '.st-key-parameters_estimated [data-testid="stRadio"] {'
         'margin-top:-.45rem;margin-bottom:-.85rem;}'
         '.st-key-parameters_published .parameter-number {color:#c9c4e8;}'
-        '.st-key-parameters_estimated .parameter-number {color:#f4cf75;}'
+        '.st-key-parameters_estimated .parameter-number {color:#f4f4f5;}'
+        '.st-key-parameters_estimated .parameter-number .parameter-uncertainty {color:#92929d;}'
+        '.st-key-parameters_estimated .parameter-block-luminosity .parameter-number, '
+        '.st-key-parameters_estimated .parameter-block-radius .parameter-number, '
+        '.st-key-parameters_estimated .parameter-block-mass .parameter-number {color:#f4cf75;}'
+        '.st-key-parameters_estimated .parameter-block-luminosity .parameter-uncertainty, '
+        '.st-key-parameters_estimated .parameter-block-radius .parameter-uncertainty, '
+        '.st-key-parameters_estimated .parameter-block-mass .parameter-uncertainty {color:#92929d;}'
         '.st-key-parameters_estimated .parameter-number.parameter-input {color:#777780;font-weight:520;}'
         '.parameter-number.parameter-input .parameter-uncertainty {color:#696971;}'
         '.parameter-method.parameter-input {color:#777780;}'
@@ -310,7 +325,7 @@ def stellar_parameter_table(groups, additional_measurements=None):
         unsafe_allow_html=True,
     )
     columns = st.columns(2, gap="small")
-    for column, title, row_index in zip(columns, ("Published", "Estimated"), (2, 3)):
+    for column, title, row_index in zip(columns, ("Estimated", "Published"), (3, 2)):
         with column:
             with st.container(border=True, key=f"parameters_{title.lower()}"):
                 displayed_groups = groups
@@ -328,31 +343,65 @@ def stellar_parameter_table(groups, additional_measurements=None):
                         displayed_groups = manual_parameter_groups()
                 else:
                     panel_heading("Published stellar parameters")
-                for group in displayed_groups:
-                    name, unit = group[:2]
-                    unit_html = escape(unit)
-                    if unit in ("L☉", "R☉", "M☉"):
-                        unit_html = f'{unit[0]}<sub>☉</sub>'
-                    rows = group[row_index]
-                    entries = []
-                    for row in rows:
-                        entries.append(
-                            '<div class="parameter-entry">'
-                            '<div class="parameter-measurement">'
-                            f'{measurement_cell(row)}'
-                            f'<span class="parameter-unit">{unit_html}</span></div>'
-                            '<div class="parameter-reference">'
-                            f'{reference_cell(row, title == "Estimated")}</div></div>'
-                        )
-                    if not entries:
-                        message = "No published value" if title == "Published" else "No estimate available"
-                        entries.append(f'<div class="parameter-missing">{message}</div>')
+                if title == "Published":
+                    rows = []
+                    for group in displayed_groups:
+                        name, unit, _, published_rows = group
+                        unit_html = escape(unit)
+                        if unit in ("L☉", "R☉", "M☉"):
+                            unit_html = f'{unit[0]}<sub>☉</sub>'
+                        if published_rows:
+                            for row in published_rows:
+                                rows.append(
+                                    '<div class="runa-data-row runa-parameter-compact-row">'
+                                    f'<span class="runa-data-label">{escape(name)}</span>'
+                                    f'<span class="runa-data-value">{measurement_cell(row)}</span>'
+                                    f'<span class="runa-data-unit">{unit_html}</span>'
+                                    f'<span class="runa-data-source">{reference_cell(row)}</span></div>'
+                                )
+                        else:
+                            rows.append(
+                                '<div class="runa-data-row runa-parameter-compact-row">'
+                                f'<span class="runa-data-label">{escape(name)}</span>'
+                                '<span class="runa-data-value parameter-missing">No published value</span>'
+                                f'<span class="runa-data-unit">{unit_html}</span>'
+                                '<span class="runa-data-source">—</span></div>'
+                            )
                     st.markdown(
-                        '<section class="parameter-block">'
-                        f'<div class="parameter-name">{escape(name)}</div>'
-                        + "".join(entries) + '</section>',
+                        '<section class="runa-data-section runa-parameter-compact">'
+                        + "".join(rows) + '</section>',
                         unsafe_allow_html=True,
                     )
+                else:
+                    for group in displayed_groups:
+                        name, unit = group[:2]
+                        parameter_class = {
+                            "Luminosity": "parameter-block-luminosity",
+                            "Radius": "parameter-block-radius",
+                            "Mass": "parameter-block-mass",
+                        }.get(name, "")
+                        unit_html = escape(unit)
+                        if unit in ("L☉", "R☉", "M☉"):
+                            unit_html = f'{unit[0]}<sub>☉</sub>'
+                        rows = group[row_index]
+                        entries = []
+                        for row in rows:
+                            entries.append(
+                                '<div class="parameter-entry">'
+                                '<div class="parameter-measurement">'
+                                f'{measurement_cell(row)}'
+                                f'<span class="parameter-unit">{unit_html}</span></div>'
+                                '<div class="parameter-reference">'
+                                f'{reference_cell(row, True)}</div></div>'
+                            )
+                        if not entries:
+                            entries.append('<div class="parameter-missing">No estimate available</div>')
+                        st.markdown(
+                            f'<section class="parameter-block {parameter_class}">'
+                            f'<div class="parameter-name">{escape(name)}</div>'
+                            + "".join(entries) + '</section>',
+                            unsafe_allow_html=True,
+                        )
                 if title == "Estimated":
                     export = estimated_parameters_csv(displayed_groups)
                     if export.count("\n") > 1:

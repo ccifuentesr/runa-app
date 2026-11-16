@@ -3,5 +3,6 @@ pandas
 scikit-learn
 matplotlib
 streamlit
+pyarrow>=23,<26
 astroquery
 banyan_sigma @ git+https://github.com/jgagneastro/banyan_sigma.git@84391a8c4

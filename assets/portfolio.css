@@ -29,9 +29,9 @@ section[data-testid="stSidebar"] {background: #111214 !important; border-right: 
 section[data-testid="stSidebar"][data-collapsed="false"] {width: 15.5rem !important; min-width: 15.5rem !important;}
 section[data-testid="stSidebar"][data-collapsed="true"] {width: 0 !important; min-width: 0 !important; border: 0 !important;}
 section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {padding: .65rem .7rem 1rem !important;}
+section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {padding-bottom: .5rem !important;}
 /* Streamlit's default one-rem block gap otherwise separates every menu row. */
 section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] [data-testid="stVerticalBlock"] {gap: 2px !important;}
-section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] [data-testid="stVerticalBlock"] {min-height: calc(100dvh - 2rem);}
 section[data-testid="stSidebar"] [data-testid="stImage"] {width: 160px !important; max-width: 160px !important; margin: .35rem .45rem 1rem !important;}
 section[data-testid="stSidebar"] [data-testid="stImage"] img {display: block !important; width: 160px !important; max-width: 160px !important; height: auto !important; image-rendering: auto;}
 /* Reserve space on Streamlit's outer row, where the next button is laid out. */
@@ -67,10 +67,9 @@ section[data-testid="stSidebar"] [data-testid="stButton"] button[data-testid="st
   color: var(--runa-accent) !important; background: transparent !important;
 }
 section[data-testid="stSidebar"] [data-testid="stButton"] button[data-testid="stBaseButton-primary"] p {color: var(--runa-accent) !important;}
-.runa-sidebar-link {margin: 2rem .6rem .5rem; font: .75rem/2 var(--runa-sans); color: #73757f;}
+.runa-sidebar-link {margin: 1.3rem .6rem .25rem; font: .75rem/1.8 var(--runa-sans); color: #73757f;}
 .runa-sidebar-link a {text-decoration: none !important;}
-section[data-testid="stSidebar"] [data-testid="stElementContainer"]:has(.runa-sidebar-credit) {margin-top: auto !important;}
-.runa-sidebar-credit {margin: 1.5rem .6rem .3rem; color: #777780; font: .75rem/1.5 var(--runa-sans);}
+.runa-sidebar-credit {margin: .7rem .6rem .3rem; color: #777780; font: .75rem/1.5 var(--runa-sans);}
 .stApp .stMarkdown a:hover, .stApp .stCaption a:hover {color: var(--runa-accent) !important;}
 .stApp button {border-radius: 4px;}
 .stApp button p {font-family: var(--runa-mono) !important; font-size: .85rem;}
@@ -122,11 +121,56 @@ section[data-testid="stSidebar"] .st-key-runa_object_name input {font: 400 .88re
 .stApp .parameter-name, .stApp .runa-parameter-label {color: var(--runa-muted) !important; font-weight: 400 !important;}
 .stApp .parameter-reference, .stApp .parameter-reference a,
 .stApp .parameter-method, .stApp .runa-parameter-source {color: #85858e !important;}
+.stApp .st-key-parameters_estimated .parameter-number:not(.parameter-input) {color:#f4f4f5 !important;}
+.stApp .st-key-parameters_estimated .parameter-block-luminosity .parameter-number:not(.parameter-input),
+.stApp .st-key-parameters_estimated .parameter-block-radius .parameter-number:not(.parameter-input),
+.stApp .st-key-parameters_estimated .parameter-block-mass .parameter-number:not(.parameter-input) {color:#f4cf75 !important;}
+.stApp .st-key-parameters_estimated .parameter-number .parameter-uncertainty {color:#92929d !important;}
 .stApp .runa-data-value, .stApp .runa-summary-value {font-variant-numeric: tabular-nums; font-weight: 500 !important;}
 .stApp .runa-parameter-published .runa-parameter-kind,
 .stApp .runa-parameter-estimated .runa-parameter-kind {color: var(--runa-muted) !important;}
 .stApp .runa-criteria-caution {color: #f4cf75 !important; font-weight: 600 !important; margin: .35rem 0 .8rem !important;}
+.runa-field-hypothesis {color: #f4cf75; font-size: 1.7rem; font-weight: 600; line-height: 1.2; padding: .15rem 0 .8rem;}
+.runa-probability-maximum {color: #f4cf75 !important; font-weight: 650 !important;}
+.runa-probability-list {margin: .25rem 0 .5rem;}
+.runa-probability-row {display: grid; grid-template-columns: minmax(0,1fr) auto; gap: .65rem; align-items: baseline; padding: .4rem .7rem; color: var(--runa-muted); font-size: .84rem;}
+.runa-probability-row + .runa-probability-row {border-top: 1px solid #28282e;}
+.runa-probability-row strong {color: #e4e4e7; font-size: .84rem; font-weight: 500; font-variant-numeric: tabular-nums;}
+.stApp [class*="st-key-coordinate_epoch_"] [data-testid="stTextInputRootElement"],
+.stApp [class*="st-key-coordinate_epoch_"] [data-testid="stTextInputRootElement"]:focus-within {border: 0 !important; outline: 0 !important; box-shadow: none !important; background: transparent !important;}
+.stApp [class*="st-key-coordinate_epoch_"] input {min-width: 4.8rem !important; padding-left: 0 !important; padding-right: 0 !important; border: 0 !important; outline: 0 !important; box-shadow: none !important; color: #d4d4d8 !important; text-align: center;}
+.stApp [class*="st-key-coordinate_epoch_down_"] button,
+.stApp [class*="st-key-coordinate_epoch_up_"] button {min-height: 2rem !important; padding: 0 !important; border: 0 !important; box-shadow: none !important; background: transparent !important; color: #a1a1aa !important; font: 400 1.05rem/1 var(--runa-sans) !important;}
+.stApp [class*="st-key-coordinate_epoch_down_"] button:hover,
+.stApp [class*="st-key-coordinate_epoch_up_"] button:hover {background: #1b1b1e !important; color: #e4e4e7 !important;}
+.stApp [class*="st-key-coordinate_epoch_down_"] button:focus,
+.stApp [class*="st-key-coordinate_epoch_up_"] button:focus {outline: 0 !important;}
+.runa-parameter-compact {margin: .15rem 0 .5rem !important; overflow: visible !important;}
+.runa-parameter-compact .runa-parameter-compact-row {grid-template-columns: minmax(6.5rem,.8fr) minmax(0,1.35fr) minmax(2.5rem,.35fr) minmax(4.5rem,.8fr) !important; gap: .45rem !important; padding: .42rem .7rem !important;}
+.runa-parameter-compact .runa-data-label {font-size: 1.04rem !important; padding-left: 0 !important;}
+.runa-parameter-compact .runa-data-value {font-size: 1rem !important;}
+.runa-parameter-compact .parameter-number {font-size: 1rem !important; font-weight: 500 !important;}
+.runa-parameter-compact .runa-data-unit {font-size: .9rem !important;}
+.runa-parameter-compact .runa-data-source {font-size: .8rem !important; white-space: normal !important; overflow-wrap: anywhere;}
+.runa-parameter-compact .runa-data-source a {color: inherit !important; text-decoration: none;}
+.runa-parameter-compact .runa-data-source a:hover {color: var(--runa-accent) !important;}
+.runa-literature-measurements .runa-parameter-compact-row {grid-template-columns: minmax(5.5rem,.75fr) minmax(0,1fr) minmax(2.5rem,.35fr) minmax(6.5rem,.9fr) !important;}
+.runa-literature-measurements .runa-data-source,
+.runa-literature-measurements .runa-data-source a {white-space: nowrap !important; overflow-wrap: normal !important; word-break: normal !important; font-size: .8rem !important;}
+.stApp .runa-identification-data {overflow: visible !important;}
+.runa-distance-notice {position: relative; display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; margin-left: .28rem; border: 1px solid #8a7742; border-radius: 50%; color: #d2b767; font: 600 .68rem/1 var(--runa-sans); cursor: help; vertical-align: .04em;}
+.runa-distance-notice-text {display: none; position: absolute; z-index: 20; left: 50%; bottom: calc(100% + .5rem); transform: translateX(-50%); width: max-content; max-width: min(19rem, 78vw); padding: .65rem .8rem; border-radius: 5px; background: #1b1b1e; color: #d4d4d8; font: 400 .8rem/1.5 var(--runa-sans); box-shadow: 0 5px 18px #0008; white-space: normal;}
+.runa-distance-notice-text a {color: var(--runa-accent) !important; text-decoration: underline;}
+.runa-distance-notice:hover .runa-distance-notice-text,
+.runa-distance-notice:focus .runa-distance-notice-text {display: block;}
 .stApp .runa-chip, .stApp .runa-learning-badge {background: #18181b !important; color: var(--runa-muted) !important; border: 0 !important; border-radius: 4px !important; font-weight: 400 !important;}
+.runa-prediction-heading {display:flex; align-items:baseline; justify-content:space-between; gap:.8rem; margin-bottom:.55rem;}
+.runa-prediction-heading .runa-panel-heading {margin:0;}
+.stApp .runa-prediction-heading .runa-learning-badge {color:#b89a5e !important; background:transparent !important;}
+.runa-loading-status {display:flex;align-items:center;gap:.55rem;color:#a4a4ad;font-size:.84rem;}
+.runa-loading-spinner {display:inline-block;width:.9rem;height:.9rem;flex:0 0 .9rem;border:2px solid #4b4b52;border-top-color:#e4e4e7;border-radius:50%;animation:runa-spin .8s linear infinite;}
+@keyframes runa-spin {to {transform:rotate(360deg);}}
+.stApp .st-key-wds_closest_metric [data-testid="stMetricValue"] {color:#f4cf75 !important;}
 .stApp .binarity-feature-groups span {border: 0 !important; background: #18181b; border-radius: 4px !important;}
 .stApp [data-testid="stExpander"] details {border: 0 !important; border-radius: 4px !important; background: var(--runa-surface);}
 .runa-section-context {display: flex; gap: .8rem; align-items: baseline; flex-wrap: wrap; padding-bottom: 1rem; margin-bottom: 1.25rem; border-bottom: 1px solid var(--runa-rule); font: .8rem/1.5 var(--runa-mono); color: var(--runa-muted);}
@@ -134,5 +178,4 @@ section[data-testid="stSidebar"] .st-key-runa_object_name input {font: 400 .88re
 @media (max-width: 850px) {
   .stMainBlockContainer {padding: 4.5rem 1.25rem 3rem !important;}
   .runa-brand {margin-bottom: 1.8rem !important;}
-  .runa-kinematic-inputs .runa-data-row {grid-template-columns: minmax(0, 1fr) auto !important; grid-template-areas: "label label" "value unit" "source source";}
 }
