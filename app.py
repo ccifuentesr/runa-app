@@ -1765,6 +1765,25 @@ def save_manual_utility_reference():
         st.session_state["utility_manual_reference_epoch"] = st.session_state["utility_reference_epoch_text"]
 
 
+def normalize_utility_coordinate(key, maximum, signed=False, seconds=False):
+    """Show entered sexagesimal components with two leading digits."""
+    raw = str(st.session_state.get(key, "")).strip().replace("−", "-")
+    try:
+        if seconds:
+            value = float(raw)
+            if not math.isfinite(value) or not 0 <= value <= maximum:
+                return
+            formatted = f"{value:04.1f}"
+        else:
+            value = int(raw)
+            if not 0 <= abs(value) <= maximum or (not signed and value < 0):
+                return
+            formatted = f"{'-' if raw.startswith('-') else '+'}{abs(value):02d}" if signed else f"{value:02d}"
+        st.session_state[key] = formatted
+    except ValueError:
+        pass
+
+
 def sexagesimal_one_decimal(value, right_ascension=False):
     """Format coordinate output to a tenth of a second."""
     total = round(abs(float(value)) * (240 if right_ascension else 3600) * 10)
@@ -2993,18 +3012,41 @@ elif tool == "Utilities":
     with utility_workspace:
         with st.container(border=True, key="utilities_selected_card"):
             if utility_tool == "Coordinates at epoch":
+                def integer_input(text, label, maximum):
+                    try:
+                        value = int(text.strip())
+                        if not 0 <= value <= maximum:
+                            raise ValueError
+                        return value
+                    except (TypeError, ValueError):
+                        st.error(f"{label}: enter a whole number from 0 to {maximum}.")
+                        return None
+
+                def decimal_input(text, label, minimum=None, maximum=None):
+                    try:
+                        value = float(text.strip())
+                        if not math.isfinite(value) or (minimum is not None and value < minimum) or (maximum is not None and value > maximum):
+                            raise ValueError
+                        return value
+                    except (TypeError, ValueError):
+                        st.error(f"{label}: enter a number using a decimal point.")
+                        return None
+
                 ra_label, ra_fields = st.columns((1.3, 3), gap="small", vertical_alignment="center")
                 with ra_label:
                     st.markdown('<div class="runa-utility-row-label">RA</div>', unsafe_allow_html=True)
                 with ra_fields:
                     ra_parts = st.columns((1, 1, 1.35), gap="small")
                 with ra_parts[0]:
-                    ra_hour = st.number_input("h", min_value=0, max_value=23, value=0, key="utility_ra_hour")
+                    ra_hour_text = st.text_input("h", value="00", key="utility_ra_hour_text", on_change=normalize_utility_coordinate, args=("utility_ra_hour_text", 23))
                 with ra_parts[1]:
-                    ra_minute = st.number_input("m", min_value=0, max_value=59, value=0, key="utility_ra_minute")
+                    ra_minute_text = st.text_input("m", value="00", key="utility_ra_minute_text", on_change=normalize_utility_coordinate, args=("utility_ra_minute_text", 59))
                 with ra_parts[2]:
-                    ra_second = st.number_input("s", min_value=0.0, max_value=59.9, value=0.0, step=0.1, format="%.1f", key="utility_ra_second")
-                input_ra = (ra_hour + ra_minute / 60 + ra_second / 3600) * 15
+                    ra_second_text = st.text_input("s", value="00.0", key="utility_ra_second_formatted", on_change=normalize_utility_coordinate, args=("utility_ra_second_formatted", 59.9, False, True))
+                ra_hour = integer_input(ra_hour_text, "RA hours", 23)
+                ra_minute = integer_input(ra_minute_text, "RA minutes", 59)
+                ra_second = decimal_input(ra_second_text, "RA seconds", 0.0, 59.9)
+                input_ra = (ra_hour + ra_minute / 60 + ra_second / 3600) * 15 if all(value is not None for value in (ra_hour, ra_minute, ra_second)) else None
 
                 dec_label, dec_fields = st.columns((1.3, 3), gap="small", vertical_alignment="center")
                 with dec_label:
@@ -3012,31 +3054,36 @@ elif tool == "Utilities":
                 with dec_fields:
                     dec_parts = st.columns((1, 1, 1.35), gap="small")
                 with dec_parts[0]:
-                    dec_degree_text = st.text_input("°", value="+00", key="utility_dec_degree_signed", placeholder="+00 or −00")
+                    dec_degree_text = st.text_input("°", value="+00", key="utility_dec_degree_signed", placeholder="+00 or −00", on_change=normalize_utility_coordinate, args=("utility_dec_degree_signed", 90, True))
                 with dec_parts[1]:
-                    dec_minute = st.number_input("m", min_value=0, max_value=59, value=0, key="utility_dec_minute")
+                    dec_minute_text = st.text_input("m", value="00", key="utility_dec_minute_text", on_change=normalize_utility_coordinate, args=("utility_dec_minute_text", 59))
                 with dec_parts[2]:
-                    dec_second = st.number_input("s", min_value=0.0, max_value=59.9, value=0.0, step=0.1, format="%.1f", key="utility_dec_second")
+                    dec_second_text = st.text_input("s", value="00.0", key="utility_dec_second_formatted", on_change=normalize_utility_coordinate, args=("utility_dec_second_formatted", 59.9, False, True))
+                dec_minute = integer_input(dec_minute_text, "Dec minutes", 59)
+                dec_second = decimal_input(dec_second_text, "Dec seconds", 0.0, 59.9)
                 try:
                     signed_degrees = dec_degree_text.strip().replace("−", "-")
                     dec_degree = int(signed_degrees)
-                    if abs(dec_degree) > 90 or (abs(dec_degree) == 90 and (dec_minute or dec_second)):
+                    if dec_minute is None or dec_second is None or abs(dec_degree) > 90 or (abs(dec_degree) == 90 and (dec_minute or dec_second)):
                         raise ValueError
                     input_dec = (-1 if signed_degrees.startswith("-") else 1) * (abs(dec_degree) + dec_minute / 60 + dec_second / 3600)
                 except ValueError:
-                    st.error("Enter Dec degrees from −90 to +90, with a sign if needed.")
+                    if dec_minute is not None and dec_second is not None:
+                        st.error("Enter Dec degrees from −90 to +90, with a sign if needed.")
                     input_dec = None
 
                 pmra_label, pmra_field = st.columns((1.3, 3), gap="small", vertical_alignment="center")
                 with pmra_label:
                     st.markdown('<div class="runa-utility-row-label">pm RA (mas/yr)</div>', unsafe_allow_html=True)
                 with pmra_field:
-                    input_pmra = st.number_input("pm RA (mas/yr)", value=0.0, format="%.3f", key="utility_input_pmra", label_visibility="collapsed")
+                    pmra_text = st.text_input("pm RA (mas/yr)", value="0.000", key="utility_input_pmra_text", label_visibility="collapsed")
+                input_pmra = decimal_input(pmra_text, "pm RA")
                 pmdec_label, pmdec_field = st.columns((1.3, 3), gap="small", vertical_alignment="center")
                 with pmdec_label:
                     st.markdown('<div class="runa-utility-row-label">pm Dec (mas/yr)</div>', unsafe_allow_html=True)
                 with pmdec_field:
-                    input_pmdec = st.number_input("pm Dec (mas/yr)", value=0.0, format="%.3f", key="utility_input_pmdec", label_visibility="collapsed")
+                    pmdec_text = st.text_input("pm Dec (mas/yr)", value="0.000", key="utility_input_pmdec_text", label_visibility="collapsed")
+                input_pmdec = decimal_input(pmdec_text, "pm Dec")
 
                 ref_label, ref_fields = st.columns((1.3, 3), gap="small", vertical_alignment="center")
                 with ref_label:
@@ -3063,30 +3110,22 @@ elif tool == "Utilities":
                 try:
                     reference_epoch_value = float(st.session_state["utility_reference_epoch_text"])
                 except (TypeError, ValueError):
+                    st.error("Enter a Julian reference year using a decimal point.")
                     reference_epoch_value = None
 
                 target_label, target_fields = st.columns((1.3, 3), gap="small", vertical_alignment="center")
                 with target_label:
                     st.markdown('<div class="runa-utility-row-label">Target epoch</div>', unsafe_allow_html=True)
                 with target_fields:
-                    target_parts = st.columns((1.5, .32, .32), gap=None)
-                with target_parts[0]:
-                    target_epoch_text = st.text_input("Target epoch", value="2016.0", key="utility_target_epoch", label_visibility="collapsed")
-                with target_parts[1]:
-                    st.button("−", key="utility_epoch_down", on_click=adjust_coordinate_epoch, args=("utility_target_epoch", -0.5), use_container_width=True)
-                with target_parts[2]:
-                    st.button("+", key="utility_epoch_up", on_click=adjust_coordinate_epoch, args=("utility_target_epoch", 0.5), use_container_width=True)
-                try:
-                    target_epoch = float(target_epoch_text)
-                    if not 1800 <= target_epoch <= 2200:
-                        raise ValueError
-                except ValueError:
-                    st.error("Enter a Julian year between 1800.0 and 2200.0, using a decimal point.")
-                    target_epoch = None
+                    target_epoch = st.selectbox(
+                        "Target epoch", tuple(1800 + index / 2 for index in range(801)),
+                        index=432, format_func=lambda year: f"{year:.1f}",
+                        key="utility_target_epoch_select", label_visibility="collapsed",
+                    )
                 if reference_epoch_value is not None and not 1800 <= reference_epoch_value <= 2200:
                     st.error("Enter a Julian reference year between 1800.0 and 2200.0.")
                     reference_epoch_value = None
-                propagated = coordinates_at_epoch(input_ra, input_dec, input_pmra, input_pmdec, reference_epoch_value, target_epoch) if target_epoch is not None and reference_epoch_value is not None and input_dec is not None else None
+                propagated = coordinates_at_epoch(input_ra, input_dec, input_pmra, input_pmdec, reference_epoch_value, target_epoch) if all(value is not None for value in (input_ra, input_dec, input_pmra, input_pmdec, reference_epoch_value, target_epoch)) else None
                 if propagated is not None:
                     result_label, result_fields = st.columns((1.3, 3), gap="small", vertical_alignment="center")
                     with result_label:
@@ -3118,6 +3157,8 @@ elif tool == "Utilities":
                     )
                 if g_text.strip() and j_text.strip():
                     try:
+                        if "," in g_text or "," in j_text:
+                            raise ValueError("Use a decimal point in both magnitudes.")
                         color, subtype = estimate_subtype(float(g_text), float(j_text))
                     except (ValueError, TypeError) as error:
                         st.caption(str(error))
