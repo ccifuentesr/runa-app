@@ -1,6 +1,7 @@
 """Photometry utilities used by the Photometry section."""
 
-from io import BytesIO
+from io import BytesIO, StringIO
+import csv
 import re
 import logging
 from pathlib import Path
@@ -366,6 +367,112 @@ def fetch_catalogue_photometry(star):
     return records
 
 
+def catalogue_photometry_csv(records, star=None):
+    """Export every queried catalogue band, including unavailable measurements."""
+    output = StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=(
+            "catalogue", "query", "matched", "band", "magnitude",
+            "magnitude_error", "effective_wavelength_angstrom", "spectral_range",
+        ),
+        lineterminator="\n",
+    )
+    writer.writeheader()
+    for record in records:
+        for band in record.get("bands", []):
+            writer.writerow({
+                "catalogue": record.get("catalogue"),
+                "query": record.get("query"),
+                "matched": record.get("matched"),
+                "band": band.get("label"),
+                "magnitude": band.get("value"),
+                "magnitude_error": band.get("error"),
+                "effective_wavelength_angstrom": band.get("wavelength"),
+                "spectral_range": band.get("range"),
+            })
+    johnson = (star or {}).get("johnson_photometry") or {}
+    has_ucac4_v = any(
+        record.get("catalogue") == "UCAC4"
+        and any(band.get("label") == "V" and band.get("value") is not None
+                for band in record.get("bands", []))
+        for record in records
+    )
+    if johnson.get("v_mag") is not None and not has_ucac4_v:
+        writer.writerow({
+            "catalogue": "UCAC4 Johnson V",
+            "query": (star or {}).get("main_id"),
+            "matched": True,
+            "band": "V",
+            "magnitude": johnson["v_mag"],
+            "magnitude_error": johnson.get("v_error"),
+            "effective_wavelength_angstrom": EFFECTIVE_WAVELENGTHS.get(("UCAC4", "V")),
+            "spectral_range": "optical",
+        })
+    return output.getvalue()
+
+
+def flag_sed_anomalies(records, tolerance_mag=2.0):
+    """Flag magnitudes that depart strongly from the Gaia/2MASS reference SED.
+
+    Gaia BP/G/RP and 2MASS J/H/Ks define a local linear trend in magnitude vs
+    log wavelength. Other catalogue measurements more than ``tolerance_mag``
+    from that trend are retained and annotated for review.
+    """
+    anchors = []
+    for record in records:
+        catalogue = record.get("catalogue")
+        if catalogue not in ("Gaia DR3", "2MASS"):
+            continue
+        for band in record.get("bands", []):
+            wavelength = _number(band.get("wavelength"))
+            value = _number(band.get("value"))
+            if wavelength and value is not None:
+                anchors.append((wavelength, value))
+    anchors = sorted(set(anchors))
+    if len(anchors) < 2:
+        return [
+            {**record, "bands": [dict(band) for band in record.get("bands", [])]}
+            for record in records
+        ]
+
+    log_wavelengths = np.log([point[0] for point in anchors])
+
+    def predict_magnitude(wavelength):
+        log_wave = np.log(wavelength)
+        right = int(np.searchsorted(log_wavelengths, log_wave))
+        left = right - 1
+        if right == 0:
+            left, right = 0, 1
+        elif right >= len(anchors):
+            left, right = len(anchors) - 2, len(anchors) - 1
+        x0, y0 = log_wavelengths[left], anchors[left][1]
+        x1, y1 = log_wavelengths[right], anchors[right][1]
+        fraction = (log_wave - x0) / (x1 - x0)
+        return y0 + fraction * (y1 - y0)
+
+    flagged_records = []
+    for record in records:
+        catalogue = record.get("catalogue")
+        flagged_bands = []
+        for original_band in record.get("bands", []):
+            band = dict(original_band)
+            wavelength = _number(band.get("wavelength"))
+            value = _number(band.get("value"))
+            if catalogue not in ("Gaia DR3", "2MASS") and wavelength and value is not None:
+                residual = value - predict_magnitude(wavelength)
+                if abs(residual) > tolerance_mag:
+                    direction = "brighter" if residual < 0 else "fainter"
+                    band["sed_warning"] = (
+                        f"{abs(residual):.1f} mag {direction} than the Gaia/2MASS "
+                        "reference SED trend; check the catalogue match and blending."
+                    )
+                    band["sed_residual_mag"] = float(residual)
+            flagged_bands.append(band)
+        flagged_records.append({**record, "bands": flagged_bands})
+    return flagged_records
+
+
 def build_sed_points(records):
     """Convert the available Vega magnitudes into SED points.
 
@@ -408,6 +515,7 @@ def build_sed_points(records):
                     wavelength * flux_error if flux_error is not None else None
                 ),
                 "colour": band["colour"],
+                "sed_warning": band.get("sed_warning"),
             })
     return sorted(points, key=lambda point: point["wavelength"])
 

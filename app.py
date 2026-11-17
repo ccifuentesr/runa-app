@@ -12,6 +12,7 @@ from urllib.parse import quote
 import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
+import streamlit.components.v1 as components
 
 from identify_star import (
     coordinates_at_epoch,
@@ -46,7 +47,9 @@ from parameters import (
 )
 from photometry import (
     build_sed_points,
+    catalogue_photometry_csv,
     fetch_catalogue_photometry,
+    flag_sed_anomalies,
     load_filter_curve,
     load_gaia_reference_sample,
     star_cmd_position,
@@ -281,13 +284,22 @@ def catalogue_photometry_table(records, sort_by_wavelength=False):
         wavelength_text = f"{wavelength:.1f}" if wavelength is not None else "—"
         catalogue_class = " runa-photometry-missing" if not band["matched"] else ""
         colour = escape(str(band["colour"]))
+        warning = band.get("sed_warning")
+        value_html = escape(value_text)
+        if warning:
+            value_html += (
+                '<span class="runa-photometry-warning" tabindex="0" '
+                f'aria-label="Suspicious magnitude: {escape(warning, quote=True)}">'
+                '<span aria-hidden="true">!</span>'
+                f'<span class="runa-photometry-warning-text">{escape(warning)}</span></span>'
+            )
         rows.append(
             f'<div class="runa-photometry-row{catalogue_class}">'
             f'<span class="runa-photometry-catalogue">{escape(band["catalogue"])}</span>'
             f'<span class="runa-band-name" style="--band-colour: {colour}">'
             f'{escape(band["label"])}</span>'
             f'<span class="runa-photometry-wavelength">{escape(wavelength_text)}</span>'
-            f'<span>{escape(value_text)}</span>'
+            f'<span>{value_html}</span>'
             f'<span class="runa-photometry-error">{escape(error_text)}</span>'
             f'<span class="runa-photometry-range">{escape(band["range"])}</span>'
             '</div>'
@@ -330,6 +342,12 @@ def sed_figure(points, object_name, show_bands=False):
             linewidth=0.9,
             zorder=2,
         )
+        if point.get("sed_warning"):
+            ax.scatter(
+                [point["wavelength"]], [point["lambda_flux"]],
+                s=150, marker="o", facecolors="none", edgecolors="#f4cf75",
+                linewidths=1.3, zorder=4,
+            )
         wavelength_key = round(point["wavelength"], 1)
         if wavelength_key not in labelled_wavelengths:
             label_height = 1.025
@@ -796,7 +814,7 @@ def load_multiplicity_deployment_model():
     return model, features.columns.tolist(), report.get("decision_threshold", 0.5)
 
 
-def multiplicity_ml_result(values):
+def multiplicity_ml_result(values, scoring=None):
     """Score Gaia DR3 diagnostics and show the classifier's thresholded decision."""
     astrometric_fields = (
         "ruwe", "ipd_gof_harmonic_amplitude", "ipd_frac_multi_peak",
@@ -814,17 +832,11 @@ def multiplicity_ml_result(values):
         st.warning("Gaia DR3 provides none of the model inputs for this source; no score was produced.")
         return
 
-    try:
-        with st.spinner("Scoring Gaia DR3 diagnostics..."):
-            model, feature_names, threshold = load_multiplicity_deployment_model()
-            features = gaia_feature_row(values, feature_names)
-            score = float(model.predict_proba(features)[0, 1])
-    except FileNotFoundError:
-        st.warning("The evaluated multiplicity model is not available yet.")
+    if scoring is None:
+        st.caption("Scoring Gaia DR3 diagnostics…")
         return
-    except (KeyError, ValueError) as error:
-        st.error(f"The model could not score this source: {error}")
-        return
+    score = scoring["score"]
+    threshold = scoring["threshold"]
 
     is_unresolved = score >= threshold
     decision_col, score_col = st.columns(2)
@@ -972,12 +984,6 @@ def object_type_name(star):
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-def gaia_reference_sample():
-    """Keep the Gaia comparison sample for one day."""
-    return load_gaia_reference_sample()
-
-
-@st.cache_data(ttl=86400, show_spinner=False)
 def nearby_gaia_sources_v3(ra, dec, radius_arcsec):
     """Cache a Gaia cone query with VizieR fallback for one day."""
     return query_gaia_neighbours(ra, dec, radius_arcsec)
@@ -998,64 +1004,10 @@ def gaia_source_photometry(gaia_id):
     return photometry
 
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def multiplicity_criteria(gaia_id):
-    """Keep the Gaia multiplicity indicators for one day."""
-    return check_multiplicity(gaia_id)
-
-
-@st.cache_data(ttl=86400, show_spinner=False)
-def wds_closest_component(ra, dec, identifiers):
-    """Cache WDS separation and last observation year for one day."""
-    return closest_primary_component(ra, dec, identifiers)
-
-
-@st.cache_data(ttl=86400, show_spinner=False)
-def rvs_reference_sample_v2():
-    """Cache the ten-parsec Gaia RV sample with Gaia@AIP fallback."""
-    return query_rvs_reference()
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def exoplanet_archive_planets_v3(query_name, main_id, identifiers, gaia_id):
-    """Cache NASA planets with discovery references for one hour."""
-    try:
-        return lookup_planets(query_name, main_id, identifiers, gaia_id), None
-    except Exception as exc:
-        return [], str(exc)
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def open_exoplanet_catalogue_planets_v2(query_name, main_id, identifiers):
-    """Keep Open Exoplanet Catalogue results or a temporary source error for one hour."""
-    try:
-        return lookup_open_exoplanet_catalogue(query_name, main_id, identifiers), None
-    except Exception as exc:
-        return [], str(exc)
-
-
-@st.cache_data(ttl=86400, show_spinner=False)
-def gaia_epoch_photometry(source_id):
-    """Reuse the automatically retrieved Gaia time series for one day."""
-    return query_gaia_epoch_photometry(source_id)
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def simbad_literature_measurements(main_id):
-    """Cache the four SIMBAD literature collections for one hour."""
-    return lookup_simbad_measurements(main_id)
-
-
-@st.cache_data(ttl=86400, show_spinner=False)
-def archival_spectroscopy_search_v4(ra, dec, pmra, pmdec, reference_epoch):
-    """Cache an explicitly requested multi-archive search for one day."""
-    return search_spectroscopy_archives(ra, dec, pmra, pmdec, reference_epoch)
-
-
 @st.cache_resource(show_spinner=False)
-def catalogue_photometry_executor():
-    """Keep catalogue lookups running across Streamlit script reruns."""
-    return ThreadPoolExecutor(max_workers=2, thread_name_prefix="runa-photometry")
+def analysis_executor():
+    """Keep independent object analyses running across page changes."""
+    return ThreadPoolExecutor(max_workers=8, thread_name_prefix="runa-analysis")
 
 
 def catalogue_photometry_object_key(star):
@@ -1065,39 +1017,130 @@ def catalogue_photometry_object_key(star):
     return str(star.get("gaia_id") or star.get("main_id") or star.get("query_name"))
 
 
-@st.fragment(run_every="1s")
-def catalogue_photometry_progress():
-    """Poll the background lookup while Photometry is the active section."""
-    if st.session_state.get("catalogue_photometry_status") != "pending":
-        return
-    future = st.session_state.get("catalogue_photometry_future")
-    if future is None:
-        return
-    if not future.done():
-        st.markdown(
-            '<div class="runa-loading-status" role="status">'
-            '<span class="runa-loading-spinner" aria-hidden="true"></span>'
-            'Searching photometric catalogues…</div>',
-            unsafe_allow_html=True,
-        )
-        return
+ANALYSIS_SECTIONS = {
+    "Photometry": ("photometry_catalogues", "photometry_cmd"),
+    "Parameters": ("parameters_calculation", "parameters_literature", "photometry_catalogues"),
+    "Kinematics": ("kinematics_population",),
+    "Multiplicity": (
+        "multiplicity_criteria", "multiplicity_neighbours", "multiplicity_epoch",
+        "multiplicity_wds", "multiplicity_archives", "multiplicity_rvs",
+        "multiplicity_model",
+    ),
+    "Planets": ("planets_nasa", "planets_oec", "planets_population", "planets_tess"),
+}
 
-    task_object = st.session_state.get("catalogue_photometry_task_object")
-    current_object = catalogue_photometry_object_key(st.session_state.get("star"))
-    try:
-        records = future.result()
-    except Exception:
-        if task_object == current_object:
-            st.session_state["catalogue_photometry_error"] = (
-                "The photometric catalogue search could not be completed. Please try again."
-            )
-            st.session_state["catalogue_photometry_status"] = "error"
-    else:
-        if task_object == current_object:
-            st.session_state["catalogue_photometry"] = records
-            st.session_state["catalogue_photometry_status"] = "complete"
-    st.session_state["catalogue_photometry_future"] = None
-    st.rerun()
+
+def _score_multiplicity(criteria_future):
+    values, _ = criteria_future.result()
+    model, feature_names, threshold = load_multiplicity_deployment_model()
+    features = gaia_feature_row(values, feature_names)
+    return {"score": float(model.predict_proba(features)[0, 1]), "threshold": threshold}
+
+
+def start_object_analysis(star):
+    """Submit every independent query once for the current object."""
+    old_jobs = st.session_state.get("analysis_jobs", {})
+    for future in old_jobs.values():
+        future.cancel()
+    source = {
+        key: deepcopy(star.get(key)) for key in (
+            "main_id", "query_name", "gaia_id", "identifiers", "ra", "dec",
+            "sp_type", "gaia_photometry", "twomass_photometry", "plx_value", "plx_err",
+            "twomass_id", "johnson_photometry",
+        )
+    }
+    executor = analysis_executor()
+    jobs = {
+        "photometry_catalogues": executor.submit(fetch_catalogue_photometry, source),
+        "photometry_cmd": executor.submit(load_gaia_reference_sample),
+        "parameters_calculation": executor.submit(calculate_parameters, source),
+        "parameters_literature": executor.submit(lookup_simbad_measurements, source["main_id"]),
+        "kinematics_population": executor.submit(run_banyan, source),
+        "planets_nasa": executor.submit(
+            lookup_planets, source["query_name"], source["main_id"],
+            tuple(source["identifiers"] or ()), source["gaia_id"],
+        ),
+        "planets_oec": executor.submit(
+            lookup_open_exoplanet_catalogue, source["query_name"],
+            source["main_id"], tuple(source["identifiers"] or ()),
+        ),
+        "planets_population": executor.submit(load_planet_population),
+    }
+    if tess_identifier(source):
+        jobs["planets_tess"] = executor.submit(fetch_tess_light_curve, source)
+    gaia_id = source.get("gaia_id")
+    if gaia_id:
+        gaia = source.get("gaia_photometry") or {}
+        ra = gaia.get("ra") or source.get("ra")
+        dec = gaia.get("dec") or source.get("dec")
+        jobs["multiplicity_criteria"] = executor.submit(check_multiplicity, gaia_id)
+        jobs["multiplicity_neighbours"] = executor.submit(query_gaia_neighbours, ra, dec, 180)
+        jobs["multiplicity_epoch"] = executor.submit(query_gaia_epoch_photometry, gaia_id)
+        jobs["multiplicity_rvs"] = executor.submit(query_rvs_reference)
+        jobs["multiplicity_model"] = executor.submit(
+            _score_multiplicity, jobs["multiplicity_criteria"]
+        )
+    jobs["multiplicity_wds"] = executor.submit(
+        closest_primary_component, source.get("ra"), source.get("dec"),
+        tuple(source.get("identifiers") or ()),
+    )
+    gaia = source.get("gaia_photometry") or {}
+    jobs["multiplicity_archives"] = executor.submit(
+        search_spectroscopy_archives,
+        gaia.get("ra") or source.get("ra"), gaia.get("dec") or source.get("dec"),
+        gaia.get("pmra"), gaia.get("pmdec"), gaia.get("ref_epoch"),
+    )
+    st.session_state["analysis_jobs"] = jobs
+    st.session_state["analysis_results"] = {}
+    st.session_state["analysis_object"] = catalogue_photometry_object_key(star)
+
+
+def analysis_result(task):
+    """Return (value, state) without waiting for a network query."""
+    result = st.session_state.get("analysis_results", {}).get(task)
+    if result is None:
+        return None, "pending"
+    if "error" in result:
+        return None, "error"
+    return result["value"], "complete"
+
+
+def analysis_section_status(section):
+    if st.session_state.get("star") is None:
+        return "idle"
+    if section == "Identification":
+        return "complete"
+    tasks = ANALYSIS_SECTIONS.get(section, ())
+    results = st.session_state.get("analysis_results", {})
+    jobs = st.session_state.get("analysis_jobs", {})
+    if any(task in jobs and task not in results for task in tasks):
+        return "pending"
+    if any(task in results and "error" in results[task] for task in tasks):
+        return "error"
+    return "complete" if tasks else "idle"
+
+
+@st.fragment(run_every="1s")
+def analysis_progress():
+    """Collect completed jobs even while another section is open."""
+    jobs = st.session_state.get("analysis_jobs", {})
+    results = st.session_state.get("analysis_results", {})
+    changed = False
+    for task, future in jobs.items():
+        if task in results or not future.done():
+            continue
+        try:
+            results[task] = {"value": future.result()}
+        except Exception as exc:
+            LOGGER.exception("Background analysis %s failed", task)
+            results[task] = {"error": str(exc)}
+        changed = True
+    if changed:
+        st.session_state["analysis_results"] = results
+        if "photometry_catalogues" in results:
+            record = results["photometry_catalogues"]
+            st.session_state["catalogue_photometry"] = record.get("value")
+        st.rerun()
 
 
 st.set_page_config(
@@ -1540,7 +1583,7 @@ st.markdown(
                                                 box-shadow: 1px 0 #34343a;}
     .runa-cifuentes-table thead .runa-cifuentes-type {z-index: 3;
                                                       text-align: center;}
-    .runa-photometry-table {overflow: hidden; border: 1px solid #2d2d33;
+    .runa-photometry-table {overflow: visible; border: 1px solid #2d2d33;
                             border-radius: 12px; margin: .7rem 0 .85rem;
                             background: #121215;}
     .runa-photometry-row {display: grid; grid-template-columns: minmax(5.5rem, .9fr)
@@ -1670,40 +1713,65 @@ if "star" not in st.session_state:
     st.session_state["star"] = None
 if "catalogue_photometry" not in st.session_state:
     st.session_state["catalogue_photometry"] = None
-if "catalogue_photometry_status" not in st.session_state:
-    st.session_state["catalogue_photometry_status"] = "idle"
-if "catalogue_photometry_future" not in st.session_state:
-    st.session_state["catalogue_photometry_future"] = None
-if "catalogue_photometry_task_object" not in st.session_state:
-    st.session_state["catalogue_photometry_task_object"] = None
-if "catalogue_photometry_error" not in st.session_state:
-    st.session_state["catalogue_photometry_error"] = None
-if "banyan_result" not in st.session_state:
-    st.session_state["banyan_result"] = None
-if "banyan_source" not in st.session_state:
-    st.session_state["banyan_source"] = None
-if "banyan_error" not in st.session_state:
-    st.session_state["banyan_error"] = None
-if "tess_light_curve" not in st.session_state:
-    st.session_state["tess_light_curve"] = None
-if "spectroscopy_archives" not in st.session_state:
-    st.session_state["spectroscopy_archives"] = None
-if "wds_archive" not in st.session_state:
-    st.session_state["wds_archive"] = None
+if "analysis_jobs" not in st.session_state:
+    st.session_state["analysis_jobs"] = {}
+if "analysis_results" not in st.session_state:
+    st.session_state["analysis_results"] = {}
+if "analysis_object" not in st.session_state:
+    st.session_state["analysis_object"] = None
 
 available_tools = [
-    "Identification", "Photometry", "Parameters", "Kinematics", "Multiplicity", "Planets",
+    "Identification", "Photometry", "Parameters", "Kinematics", "Multiplicity", "Planets", "Utilities",
 ]
 current_tool = st.session_state.get("runa_tool", "Identification")
 if current_tool not in [*available_tools, "Data", "Models"]:
     current_tool = "Identification"
 if "runa_tool" not in st.session_state:
     st.session_state["runa_tool"] = current_tool
+if "utility_tool" not in st.session_state:
+    st.session_state["utility_tool"] = "Coordinates at epoch"
+if "utility_reference_catalogue" not in st.session_state:
+    st.session_state["utility_reference_catalogue"] = "Gaia DR3"
+if "utility_manual_reference_epoch" not in st.session_state:
+    st.session_state["utility_manual_reference_epoch"] = "2016.0"
+if "utility_reference_epoch_text" not in st.session_state:
+    st.session_state["utility_reference_epoch_text"] = "2016.0"
 
 
 def select_tool(tool_name):
     """Select a RUNA section from the persistent left navigation."""
     st.session_state["runa_tool"] = tool_name
+
+
+def select_utility(tool_name):
+    """Select one tool in the workspace Utilities menu."""
+    st.session_state["runa_tool"] = "Utilities"
+    st.session_state["utility_tool"] = tool_name
+
+
+def select_utility_reference():
+    """Keep the epoch field in step with the selected reference."""
+    mode = st.session_state["utility_reference_mode"]
+    st.session_state["utility_reference_catalogue"] = mode
+    st.session_state["utility_reference_epoch_text"] = (
+        "2016.0" if mode == "Gaia DR3" else
+        "2022.5" if mode == "Gaia DR4" else
+        st.session_state.get("utility_manual_reference_epoch", "2016.0")
+    )
+
+
+def save_manual_utility_reference():
+    if st.session_state.get("utility_reference_mode") == "Manual":
+        st.session_state["utility_manual_reference_epoch"] = st.session_state["utility_reference_epoch_text"]
+
+
+def sexagesimal_one_decimal(value, right_ascension=False):
+    """Format coordinate output to a tenth of a second."""
+    total = round(abs(float(value)) * (240 if right_ascension else 3600) * 10)
+    first, remainder = divmod(total, 36000)
+    minute, tenth_seconds = divmod(remainder, 600)
+    sign = "" if right_ascension else ("−" if math.copysign(1, value) < 0 else "+")
+    return f"{sign}{first % 24 if right_ascension else first:02d}:{minute:02d}:{tenth_seconds / 10:04.1f}"
 
 
 def request_object_search():
@@ -1737,14 +1805,56 @@ navigation_sections = (
         (
             ("Data", ":material/table_view:"),
             ("Models", ":material/model_training:"),
+            ("Utilities", ":material/build:"),
         ),
     ),
 )
+
+loaded_star = st.session_state.get("star")
+if loaded_star and st.session_state.get("analysis_object") != catalogue_photometry_object_key(loaded_star):
+    start_object_analysis(loaded_star)
+
+status_styles = []
+search_in_progress = bool(st.session_state.get("runa_search_requested"))
+for section in available_tools:
+    state = "pending" if search_in_progress else analysis_section_status(section)
+    selector = f'.st-key-runa_linear_{section.lower()} button::after'
+    if state == "pending":
+        status_styles.append(
+            f'{selector} {{content:"";position:absolute;right:12px;top:11px;'
+            'width:.72rem;height:.72rem;border:1.5px solid #4b4b52;border-top-color:#a6a7b0;'
+            'border-radius:50%;animation:runa-spin .8s linear infinite;}'
+        )
+    elif state == "complete":
+        status_styles.append(
+            f'{selector} {{content:"";position:absolute;right:10px;top:50%;'
+            'width:16px;height:16px;transform:translateY(-50%);pointer-events:none;'
+            'background:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' '
+            'viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%236ee7b7\' '
+            'stroke-width=\'1.8\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E'
+            '%3Ccircle cx=\'12\' cy=\'12\' r=\'9\'/%3E'
+            '%3Cpath d=\'m8.5 12 2.3 2.3 4.7-4.7\'/%3E%3C/svg%3E") '
+            'center/contain no-repeat;}'
+        )
+    elif state == "error":
+        status_styles.append(
+            f'{selector} {{content:"";position:absolute;right:10px;top:50%;'
+            'width:16px;height:16px;transform:translateY(-50%);pointer-events:none;'
+            'background:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' '
+            'viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23d6a557\' '
+            'stroke-width=\'1.8\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E'
+            '%3Ccircle cx=\'12\' cy=\'12\' r=\'9\'/%3E'
+            '%3Cpath d=\'M12 8v4\'/%3E%3Ccircle cx=\'12\' cy=\'16\' r=\'.6\' fill=\'%23d6a557\' stroke=\'none\'/%3E'
+            '%3C/svg%3E") center/contain no-repeat;}'
+        )
+
+utility_tool = st.session_state.get("utility_tool", "Coordinates at epoch")
 
 st.markdown(
     "<style>" + (Path(__file__).resolve().parent / "assets" / "portfolio.css").read_text(encoding="utf-8") + "</style>",
     unsafe_allow_html=True,
 )
+st.markdown("<style>" + "".join(status_styles) + "</style>", unsafe_allow_html=True)
 
 with st.sidebar:
     st.image(
@@ -1779,33 +1889,31 @@ with st.sidebar:
         '<div class="runa-sidebar-credit" aria-label="Copyright">© 2026 C. Cifuentes</div>',
         unsafe_allow_html=True,
     )
+    analysis_progress()
 
 tool = st.session_state["runa_tool"]
 star = st.session_state["star"]
+context_object = (
+    f'<span>{escape(str(star["main_id"]))}</span>'
+    if star and tool != "Utilities" else
+    '<span>No object loaded</span>' if not star and tool != "Utilities" else ""
+)
 st.markdown(
     '<div class="runa-section-context">'
     f'<strong>{escape(tool)}</strong>'
-    f'<span>{escape(str(star["main_id"])) if star else "No object loaded"}</span></div>',
+    f'{context_object}</div>',
     unsafe_allow_html=True,
 )
 search_error = None
 if top_submitted:
     with st.spinner("Loading star and catalogue data...", show_time=True):
-        previous_photometry_future = st.session_state.get("catalogue_photometry_future")
-        if previous_photometry_future is not None:
-            previous_photometry_future.cancel()
-        st.session_state["catalogue_photometry_future"] = None
-        st.session_state["catalogue_photometry_task_object"] = None
-        st.session_state["catalogue_photometry_status"] = "idle"
-        st.session_state["catalogue_photometry_error"] = None
+        for future in st.session_state.get("analysis_jobs", {}).values():
+            future.cancel()
+        st.session_state["analysis_jobs"] = {}
+        st.session_state["analysis_results"] = {}
+        st.session_state["analysis_object"] = None
         st.session_state["star"] = None
-        st.session_state["banyan_result"] = None
-        st.session_state["banyan_source"] = None
-        st.session_state["banyan_error"] = None
         st.session_state["catalogue_photometry"] = None
-        st.session_state["tess_light_curve"] = None
-        st.session_state["spectroscopy_archives"] = None
-        st.session_state["wds_archive"] = None
         star = None
         try:
             data = lookup_star(top_name)
@@ -1832,7 +1940,7 @@ if top_submitted:
 if search_error:
     st.error(search_error)
 
-if tool in ("Identification", "Data", "Models", "Parameters"):
+if tool in ("Identification", "Data", "Models", "Parameters", "Utilities"):
     input_card = None
     result_card = (
         st.container(border=False)
@@ -1860,9 +1968,6 @@ else:
     coordinate_epoch_card = (
         inputs.container(border=True, key="kinematics_epoch_card")
         if tool == "Kinematics" else None
-    )
-    spectral_type_card = (
-        results.container(border=True, key="photometry_estimated_spectral") if tool == "Photometry" else None
     )
     cmd_card = (
         inputs.container()
@@ -2190,112 +2295,6 @@ elif tool == "Photometry":
                     absolute_j.get("error") if absolute_j is not None else None,
                 )
 
-    with spectral_type_card:
-        st.markdown(
-            '<div class="runa-prediction-heading">'
-            '<span class="runa-panel-heading">Spectral type estimation</span>'
-            '<span class="runa-learning-badge">Supervised learning</span></div>',
-            unsafe_allow_html=True,
-        )
-        mode = st.radio(
-            "Mode", ["Loaded star", "Manual"], horizontal=True,
-            key="spectral_input_source", label_visibility="collapsed",
-        )
-        ready = False
-        message = None
-        if mode == "Loaded star":
-            if star is None:
-                message = "Load an object in Identification, or use Manual input."
-            else:
-                g_mag = star["gaia_photometry"].get("phot_g_mean_mag")
-                j_mag = star["twomass_photometry"].get("j_mag")
-                quality = star["twomass_photometry"].get("j_quality")
-                if quality and quality != "A":
-                    st.warning(f"2MASS J has quality flag {quality}; check this estimate carefully.")
-                if g_mag is None or j_mag is None:
-                    message = "This object needs both Gaia G and 2MASS J measurements."
-                else:
-                    ready = True
-        else:
-            st.write("Estimate from two magnitudes without changing the selected object.")
-            with st.form("manual_spectral_type"):
-                g_text = st.text_input("Gaia G magnitude", placeholder="e.g. 10.5")
-                j_text = st.text_input("2MASS J magnitude", placeholder="e.g. 7.7")
-                submitted = st.form_submit_button("Estimate spectral type")
-            if submitted:
-                try:
-                    if not g_text.strip() or not j_text.strip():
-                        raise ValueError("Enter both magnitudes.")
-                    g_mag = float(g_text)
-                    j_mag = float(j_text)
-                    ready = True
-                except (TypeError, ValueError):
-                    message = "Enter two numeric magnitudes."
-            else:
-                message = "Enter two magnitudes and select **Estimate spectral type**."
-
-        if not ready:
-            if message:
-                st.write(message)
-        else:
-            try:
-                color, subtype = estimate_subtype(g_mag, j_mag)
-            except ValueError as error:
-                st.error(f"No estimate was made. {error}")
-            else:
-                st.markdown(
-                    '<div class="runa-spectral-result">'
-                    '<div class="runa-spectral-estimate">'
-                    '<span>Estimated spectral type</span>'
-                    f'<strong>M{subtype:.1f}</strong></div>'
-                    '<div class="runa-spectral-colour">G−J colour'
-                    f'<strong>{color:.2f} mag</strong></div></div>',
-                    unsafe_allow_html=True,
-                )
-                if mode == "Manual":
-                    st.caption("Manual estimate; the selected RUNA object is unchanged.")
-
-                stars = load_stars()
-                fig, ax = plt.subplots(figsize=(6.5, 4))
-                fig.patch.set_facecolor("#151518")
-                ax.set_facecolor("#151518")
-                ax.scatter(stars["G-J"], stars["SpTnum"], s=12, alpha=0.35, color="#a1a1aa")
-                ax.set_ylim(-0.35, max(5.5, subtype + 0.25))
-                ax.vlines(
-                    color, -0.35, subtype, color="#ef4444",
-                    linestyle=(0, (4, 3)), linewidth=1.0,
-                    alpha=0.85, zorder=2,
-                )
-                ax.scatter(
-                    color, subtype, s=85, color="#ef4444",
-                    label="Your estimate", zorder=3,
-                )
-                ax.set_xlabel("G−J colour (mag)", fontsize=13)
-                ax.set_ylabel("Spectral subtype", fontsize=13)
-                ax.set_yticks(range(6), ["M0", "M1", "M2", "M3", "M4", "M5"])
-                ax.tick_params(colors="#a1a1aa", labelsize=11)
-                ax.xaxis.label.set_color("#d4d4d8")
-                ax.yaxis.label.set_color("#d4d4d8")
-                for spine in ax.spines.values():
-                    spine.set_color("#3f3f46")
-                    spine.set_zorder(4)
-                ax.legend(
-                    facecolor="#19191e", edgecolor="#3f3f46",
-                    labelcolor="#d4d4d8", fontsize=10,
-                )
-                fig.tight_layout()
-                st.pyplot(fig)
-                plt.close(fig)
-                st.caption(
-                    "Photometric estimate for an ordinary M0–M5.5 dwarf. "
-                    "Confirm with spectroscopy and check measurement quality before "
-                    "interpreting the estimate."
-                )
-        st.caption(
-            "Training, model comparison and validation: "
-            "Models → Spectral type estimation."
-        )
-
     with additional_catalogue_card:
         panel_heading("Additional catalogue photometry")
         if star is None:
@@ -2308,40 +2307,22 @@ elif tool == "Photometry":
                 'is the reference for the filter profiles.</p>',
                 unsafe_allow_html=True,
             )
-            if st.button(
-                "Search photometric catalogues",
-                key="search_catalogue_photometry",
-                use_container_width=True,
-            ):
-                previous_future = st.session_state.get("catalogue_photometry_future")
-                if previous_future is not None:
-                    previous_future.cancel()
-                task_object = catalogue_photometry_object_key(star)
-                st.session_state["catalogue_photometry"] = None
-                st.session_state["catalogue_photometry_error"] = None
-                st.session_state["catalogue_photometry_status"] = "pending"
-                st.session_state["catalogue_photometry_task_object"] = task_object
-                catalogue_star = {
-                    key: deepcopy(star.get(key))
-                    for key in (
-                        "gaia_photometry", "identifiers", "main_id", "gaia_id",
-                        "query_name",
-                    )
-                }
-                st.session_state["catalogue_photometry_future"] = (
-                    catalogue_photometry_executor().submit(
-                        fetch_catalogue_photometry, catalogue_star
-                    )
+            catalogue_records, catalogue_state = analysis_result("photometry_catalogues")
+            if catalogue_state == "pending":
+                st.markdown(
+                    '<div class="runa-loading-status" role="status">'
+                    '<span class="runa-loading-spinner" aria-hidden="true"></span>'
+                    'Searching photometric catalogues…</div>',
+                    unsafe_allow_html=True,
                 )
-            catalogue_photometry_progress()
-            if st.session_state.get("catalogue_photometry_status") == "error":
-                st.warning(st.session_state.get("catalogue_photometry_error"))
-            elif st.session_state.get("catalogue_photometry_status") == "complete":
+            elif catalogue_state == "error":
+                st.warning("The photometric catalogue search could not be completed.")
+            else:
                 st.caption("Photometric catalogue search complete.")
-            catalogue_records = st.session_state.get("catalogue_photometry")
             if catalogue_records is None:
                 pass
             else:
+                catalogue_records = flag_sed_anomalies(catalogue_records)
                 st.write("#### Spectral energy distribution")
                 sed_points = build_sed_points(catalogue_records)
                 st.caption(
@@ -2385,39 +2366,45 @@ elif tool == "Photometry":
                     catalogue_records,
                     sort_by_wavelength=sort_by_wavelength,
                 )
-                st.caption(
-                    "Band colours indicate the approximate spectral range: UV, "
-                    "optical, near-IR and mid-IR. Missing bands remain unavailable."
+                st.download_button(
+                    "Download all catalogue photometry (.csv)",
+                    data=catalogue_photometry_csv(catalogue_records, star),
+                    file_name=f"runa_{catalogue_photometry_object_key(star)}_photometry.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key="download_all_catalogue_photometry",
                 )
-
                 vosa_file = build_vosa_input(star, catalogue_records)
-                if vosa_file is None:
-                    st.button(
-                        "↓ Download VOSA input",
-                        disabled=True,
-                        use_container_width=True,
-                        key="download_vosa_input_disabled",
-                    )
-                else:
-                    st.download_button(
-                        "↓ Download VOSA input",
-                        data=vosa_file["content"],
-                        file_name=vosa_file["filename"],
-                        mime="text/plain",
-                        use_container_width=True,
-                    )
-
                 st.write("#### VOSA")
                 st.caption(
                     "VOSA (VO SED Analyzer) builds and analyses spectral energy "
                     "distributions, compares them with stellar models and can "
                     "estimate physical properties such as bolometric luminosity."
                 )
-                st.link_button(
-                    "Open VOSA ↗",
-                    "https://svo2.cab.inta-csic.es/theory/vosa/",
-                    use_container_width=True,
-                )
+                vosa_actions = st.columns(2, gap="small")
+                with vosa_actions[0]:
+                    if vosa_file is None:
+                        st.button(
+                            "↓ Download VOSA input",
+                            disabled=True,
+                            use_container_width=True,
+                            key="download_vosa_input_disabled",
+                        )
+                    else:
+                        st.download_button(
+                            "↓ Download VOSA input",
+                            data=vosa_file["content"],
+                            file_name=vosa_file["filename"],
+                            mime="text/plain",
+                            use_container_width=True,
+                            key="download_vosa_input",
+                        )
+                with vosa_actions[1]:
+                    st.link_button(
+                        "Open VOSA ↗",
+                        "https://svo2.cab.inta-csic.es/theory/vosa/",
+                        use_container_width=True,
+                    )
                 if vosa_file is None:
                     st.info(
                         "A positive Gaia parallax and at least one mapped band with "
@@ -2441,10 +2428,15 @@ elif tool == "Photometry":
             elif position is None:
                 st.info("A positive parallax and Gaia BP/RP measurements are needed for the diagram.")
             else:
-                try:
-                    with st.spinner("Loading Gaia reference stars..."):
-                        reference = gaia_reference_sample()
-                except Exception:
+                reference, reference_state = analysis_result("photometry_cmd")
+                if reference_state == "pending":
+                    st.markdown(
+                        '<div class="runa-loading-status" role="status">'
+                        '<span class="runa-loading-spinner" aria-hidden="true"></span>'
+                        'Loading Gaia reference stars…</div>',
+                        unsafe_allow_html=True,
+                    )
+                elif reference_state == "error":
                     st.error("The Gaia reference sample could not be loaded.")
                 else:
                     colour, absolute_g = position
@@ -2483,15 +2475,13 @@ elif tool == "Photometry":
                     )
 
 elif tool == "Parameters":
-    parameters = calculate_parameters(star) if star is not None else None
+    parameters, parameters_state = analysis_result("parameters_calculation") if star is not None else (None, "idle")
     published_parameters = published_stellar_parameters(star)
     additional_measurements = None
     if star is not None:
-        with st.spinner("Loading SIMBAD literature measurements..."):
-            try:
-                additional_measurements = simbad_literature_measurements(star["main_id"])
-            except Exception:
-                additional_measurements = {"unavailable": ["all"]}
+        additional_measurements, literature_state = analysis_result("parameters_literature")
+        if literature_state == "error":
+            additional_measurements = {"unavailable": ["all"]}
 
     def preferred_published(entries):
         """Prefer Cifuentes et al. (2025) when both bundled catalogues match."""
@@ -2574,7 +2564,7 @@ elif tool == "Parameters":
     catalogue_records = st.session_state.get("catalogue_photometry")
     metallicity = None
     metallicity_inputs = []
-    if star is not None and catalogue_records is not None:
+    if star is not None and catalogue_records is not None and parameters is not None:
         gaia = star.get("gaia_photometry", {})
         w1 = catalogue_band(catalogue_records, "AllWISE", "W1")
         w2 = catalogue_band(catalogue_records, "AllWISE", "W2")
@@ -2790,7 +2780,7 @@ elif tool == "Parameters":
                 ("Metallicity", "dex", metallicity_rows, metallicity_estimates),
             ], additional_measurements=additional_measurements)
             if catalogue_records is None:
-                st.caption("For photometric metallicity, search catalogues in Photometry first.")
+                st.caption("Photometric catalogues are loading for the metallicity estimate.")
             with st.expander("Model scopes", expanded=False):
                 st.caption(
                     "Published values use Cifuentes et al. (2025) when both bundled "
@@ -2806,22 +2796,11 @@ elif tool == "Parameters":
 
 
 elif tool == "Kinematics":
-    if star is not None:
-        banyan_source = str(star.get("gaia_id") or star.get("main_id"))
-        if st.session_state.get("banyan_source") != banyan_source:
-            st.session_state["banyan_result"] = None
-            st.session_state["banyan_error"] = None
-            st.session_state["banyan_source"] = banyan_source
-            try:
-                with st.spinner("Calculating kinematic population membership..."):
-                    st.session_state["banyan_result"] = run_banyan(star)
-            except (ValueError, RuntimeError) as error:
-                st.session_state["banyan_error"] = str(error)
-            except Exception:
-                st.session_state["banyan_error"] = (
-                    "The population-membership calculation failed. Please try again."
-                )
-    banyan_error = st.session_state.get("banyan_error")
+    banyan_result, banyan_state = analysis_result("kinematics_population") if star is not None else (None, "idle")
+    banyan_error = (
+        st.session_state.get("analysis_results", {}).get("kinematics_population", {}).get("error")
+        if banyan_state == "error" else None
+    )
     with input_card:
         if star is None:
             st.write("Load an object in **Identification** first.")
@@ -2860,10 +2839,12 @@ elif tool == "Kinematics":
             st.error(banyan_error)
         elif star is None:
             st.write("Choose a star in **Identification** first.")
-        elif st.session_state["banyan_result"] is None:
+        elif banyan_state == "pending":
+            st.write("Calculating kinematic population membership…")
+        elif banyan_result is None:
             st.write("No population-membership prediction is available.")
         else:
-            banyan = st.session_state["banyan_result"]
+            banyan = banyan_result
             best_hypothesis = banyan["best_hypothesis"]
             best_association = banyan["best_association"]
             probability = banyan["association_probability"]
@@ -2937,16 +2918,13 @@ elif tool == "Kinematics":
             gaia_epoch = star.get("gaia_photometry") or {}
             epoch_key = f"coordinate_epoch_{star['main_id']}"
             with epoch_controls:
-                # Place both step buttons in one adjacent pair after the year.
                 epoch_value, epoch_buttons = st.columns(
                     (1.5, .7), gap=0, vertical_alignment="center"
                 )
                 with epoch_value:
                     target_epoch_text = st.text_input(
-                        "Target epoch (Julian year)",
-                        value="2016.0",
-                        label_visibility="collapsed",
-                        key=epoch_key,
+                        "Target epoch (Julian year)", value="2016.0",
+                        label_visibility="collapsed", key=epoch_key,
                     )
                 with epoch_buttons:
                     epoch_down, epoch_up = st.columns(
@@ -2974,23 +2952,17 @@ elif tool == "Kinematics":
             reference_epoch = gaia_epoch.get("ref_epoch")
             propagated = (
                 coordinates_at_epoch(
-                    gaia_epoch.get("ra"),
-                    gaia_epoch.get("dec"),
-                    gaia_epoch.get("pmra"),
-                    gaia_epoch.get("pmdec"),
-                    reference_epoch,
-                    target_epoch,
-                )
-                if target_epoch is not None else None
+                    gaia_epoch.get("ra"), gaia_epoch.get("dec"),
+                    gaia_epoch.get("pmra"), gaia_epoch.get("pmdec"),
+                    reference_epoch, target_epoch,
+                ) if target_epoch is not None else None
             )
-            if target_epoch is None:
-                pass
-            elif propagated is None:
+            if target_epoch is not None and propagated is None:
                 st.info(
                     "Gaia DR3 coordinates, proper motion and reference "
                     "epoch are needed for this calculation."
                 )
-            else:
+            elif propagated is not None:
                 source = f"Gaia DR3 · {float(reference_epoch):.1f}"
                 coordinate_rows = [
                     ("RA", sexagesimal(propagated["ra"], True), source, None, None),
@@ -2999,9 +2971,164 @@ elif tool == "Kinematics":
                 st.markdown(
                     '<section class="runa-data-section runa-identification-data runa-kinematic-inputs">'
                     + "".join(data_row(*row) for row in coordinate_rows)
-                    + "</section>",
-                    unsafe_allow_html=True,
+                    + "</section>", unsafe_allow_html=True,
                 )
+
+elif tool == "Utilities":
+    utility_menu, utility_workspace = st.columns((1, 2), gap="large")
+    with utility_menu:
+        for utility_name, key_name in (
+            ("Coordinates at epoch", "coordinates"),
+            ("Spectral type estimation", "spectral_type"),
+        ):
+            st.button(
+                utility_name,
+                use_container_width=True,
+                type="primary" if utility_tool == utility_name else "secondary",
+                key=f"workspace_utility_{key_name}",
+                on_click=select_utility,
+                args=(utility_name,),
+            )
+
+    with utility_workspace:
+        with st.container(border=True, key="utilities_selected_card"):
+            if utility_tool == "Coordinates at epoch":
+                ra_label, ra_fields = st.columns((1.3, 3), gap="small", vertical_alignment="center")
+                with ra_label:
+                    st.markdown('<div class="runa-utility-row-label">RA</div>', unsafe_allow_html=True)
+                with ra_fields:
+                    ra_parts = st.columns((1, 1, 1.35), gap="small")
+                with ra_parts[0]:
+                    ra_hour = st.number_input("h", min_value=0, max_value=23, value=0, key="utility_ra_hour")
+                with ra_parts[1]:
+                    ra_minute = st.number_input("m", min_value=0, max_value=59, value=0, key="utility_ra_minute")
+                with ra_parts[2]:
+                    ra_second = st.number_input("s", min_value=0.0, max_value=59.9, value=0.0, step=0.1, format="%.1f", key="utility_ra_second")
+                input_ra = (ra_hour + ra_minute / 60 + ra_second / 3600) * 15
+
+                dec_label, dec_fields = st.columns((1.3, 3), gap="small", vertical_alignment="center")
+                with dec_label:
+                    st.markdown('<div class="runa-utility-row-label">Dec</div>', unsafe_allow_html=True)
+                with dec_fields:
+                    dec_parts = st.columns((1, 1, 1.35), gap="small")
+                with dec_parts[0]:
+                    dec_degree_text = st.text_input("°", value="+00", key="utility_dec_degree_signed", placeholder="+00 or −00")
+                with dec_parts[1]:
+                    dec_minute = st.number_input("m", min_value=0, max_value=59, value=0, key="utility_dec_minute")
+                with dec_parts[2]:
+                    dec_second = st.number_input("s", min_value=0.0, max_value=59.9, value=0.0, step=0.1, format="%.1f", key="utility_dec_second")
+                try:
+                    signed_degrees = dec_degree_text.strip().replace("−", "-")
+                    dec_degree = int(signed_degrees)
+                    if abs(dec_degree) > 90 or (abs(dec_degree) == 90 and (dec_minute or dec_second)):
+                        raise ValueError
+                    input_dec = (-1 if signed_degrees.startswith("-") else 1) * (abs(dec_degree) + dec_minute / 60 + dec_second / 3600)
+                except ValueError:
+                    st.error("Enter Dec degrees from −90 to +90, with a sign if needed.")
+                    input_dec = None
+
+                pmra_label, pmra_field = st.columns((1.3, 3), gap="small", vertical_alignment="center")
+                with pmra_label:
+                    st.markdown('<div class="runa-utility-row-label">pm RA (mas/yr)</div>', unsafe_allow_html=True)
+                with pmra_field:
+                    input_pmra = st.number_input("pm RA (mas/yr)", value=0.0, format="%.3f", key="utility_input_pmra", label_visibility="collapsed")
+                pmdec_label, pmdec_field = st.columns((1.3, 3), gap="small", vertical_alignment="center")
+                with pmdec_label:
+                    st.markdown('<div class="runa-utility-row-label">pm Dec (mas/yr)</div>', unsafe_allow_html=True)
+                with pmdec_field:
+                    input_pmdec = st.number_input("pm Dec (mas/yr)", value=0.0, format="%.3f", key="utility_input_pmdec", label_visibility="collapsed")
+
+                ref_label, ref_fields = st.columns((1.3, 3), gap="small", vertical_alignment="center")
+                with ref_label:
+                    st.markdown('<div class="runa-utility-row-label">Reference epoch</div>', unsafe_allow_html=True)
+                reference_catalogue = st.session_state.get("utility_reference_catalogue", "Gaia DR3")
+                with ref_fields:
+                    reference_controls = st.columns((2.6, 1.1), gap="small", vertical_alignment="center")
+                with reference_controls[0]:
+                    st.segmented_control(
+                        "Reference", ("Gaia DR3", "Gaia DR4", "Manual"),
+                        default=reference_catalogue,
+                        key="utility_reference_mode",
+                        on_change=select_utility_reference,
+                        label_visibility="collapsed",
+                        width="stretch",
+                    )
+                with reference_controls[1]:
+                    st.text_input(
+                        "Reference epoch", key="utility_reference_epoch_text",
+                        on_change=save_manual_utility_reference,
+                        disabled=reference_catalogue != "Manual",
+                        label_visibility="collapsed",
+                    )
+                try:
+                    reference_epoch_value = float(st.session_state["utility_reference_epoch_text"])
+                except (TypeError, ValueError):
+                    reference_epoch_value = None
+
+                target_label, target_fields = st.columns((1.3, 3), gap="small", vertical_alignment="center")
+                with target_label:
+                    st.markdown('<div class="runa-utility-row-label">Target epoch</div>', unsafe_allow_html=True)
+                with target_fields:
+                    target_parts = st.columns((1.5, .32, .32), gap=None)
+                with target_parts[0]:
+                    target_epoch_text = st.text_input("Target epoch", value="2016.0", key="utility_target_epoch", label_visibility="collapsed")
+                with target_parts[1]:
+                    st.button("−", key="utility_epoch_down", on_click=adjust_coordinate_epoch, args=("utility_target_epoch", -0.5), use_container_width=True)
+                with target_parts[2]:
+                    st.button("+", key="utility_epoch_up", on_click=adjust_coordinate_epoch, args=("utility_target_epoch", 0.5), use_container_width=True)
+                try:
+                    target_epoch = float(target_epoch_text)
+                    if not 1800 <= target_epoch <= 2200:
+                        raise ValueError
+                except ValueError:
+                    st.error("Enter a Julian year between 1800.0 and 2200.0, using a decimal point.")
+                    target_epoch = None
+                if reference_epoch_value is not None and not 1800 <= reference_epoch_value <= 2200:
+                    st.error("Enter a Julian reference year between 1800.0 and 2200.0.")
+                    reference_epoch_value = None
+                propagated = coordinates_at_epoch(input_ra, input_dec, input_pmra, input_pmdec, reference_epoch_value, target_epoch) if target_epoch is not None and reference_epoch_value is not None and input_dec is not None else None
+                if propagated is not None:
+                    result_label, result_fields = st.columns((1.3, 3), gap="small", vertical_alignment="center")
+                    with result_label:
+                        st.markdown('<div class="runa-utility-row-label">Results</div>', unsafe_allow_html=True)
+                    with result_fields:
+                        output_ra = sexagesimal_one_decimal(propagated["ra"], True)
+                        output_dec = sexagesimal_one_decimal(propagated["dec"])
+                        copy_html = f'''<html><body style="margin:0;background:transparent"><div class="result"><span>RA</span><button type="button" onclick="copyCoordinate('ra')" title="Copy RA" aria-label="Copy RA">{escape(output_ra)}</button><span>Dec</span><button type="button" onclick="copyCoordinate('dec')" title="Copy Dec" aria-label="Copy Dec">{escape(output_dec)}</button></div><script>const values={{ra:{json.dumps(output_ra)},dec:{json.dumps(output_dec)}}};async function copyCoordinate(which){{const value=values[which];try{{await navigator.clipboard.writeText(value)}}catch(e){{const t=document.createElement('textarea');t.value=value;document.body.appendChild(t);t.select();document.execCommand('copy');t.remove()}}}}</script><style>body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#a1a1aa}}.result{{display:grid;grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr);gap:10px;align-items:center;height:36px}}span{{font-size:16px}}button{{background:none;border:0;padding:0;text-align:left;color:#f4f4f5;font:500 22px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;cursor:copy}}button:hover{{color:#6ee7b7}}</style></body></html>'''
+                        components.html(copy_html, height=40)
+            else:
+                gaia_magnitudes = (star or {}).get("gaia_photometry") or {}
+                twomass_magnitudes = (star or {}).get("twomass_photometry") or {}
+                default_g = gaia_magnitudes.get("phot_g_mean_mag")
+                default_j = twomass_magnitudes.get("j_mag")
+                magnitude_columns = st.columns(2, gap="medium")
+                with magnitude_columns[0]:
+                    g_text = st.text_input(
+                        "Gaia G (mag)",
+                        value=f"{float(default_g):.3f}" if default_g is not None else "",
+                        placeholder="G magnitude",
+                        key="utility_spt_g_magnitude",
+                    )
+                with magnitude_columns[1]:
+                    j_text = st.text_input(
+                        "2MASS J (mag)",
+                        value=f"{float(default_j):.3f}" if default_j is not None else "",
+                        placeholder="J magnitude",
+                        key="utility_spt_j_magnitude",
+                    )
+                if g_text.strip() and j_text.strip():
+                    try:
+                        color, subtype = estimate_subtype(float(g_text), float(j_text))
+                    except (ValueError, TypeError) as error:
+                        st.caption(str(error))
+                    else:
+                        st.markdown(
+                            '<div class="runa-spectral-result">'
+                            '<div class="runa-spectral-estimate">'
+                            '<span>Estimated spectral type</span>'
+                            f'<strong>M{subtype:.1f}</strong></div></div>',
+                            unsafe_allow_html=True,
+                        )
 
 elif tool == "Planets":
     with input_card:
@@ -3013,17 +3140,20 @@ elif tool == "Planets":
         if star is None:
             st.write("Choose a star in **Identification** first.")
         else:
-            with st.spinner("Searching planetary catalogues..."):
-                identifiers = tuple(star.get("identifiers", []))
-                nasa_planets, nasa_error = exoplanet_archive_planets_v3(
-                    star.get("query_name"), star.get("main_id"), identifiers,
-                    star.get("gaia_id"),
+            nasa_planets, nasa_state = analysis_result("planets_nasa")
+            oec_planets, oec_state = analysis_result("planets_oec")
+            nasa_error = nasa_state == "error"
+            oec_error = oec_state == "error"
+            planets_pending = "pending" in (nasa_state, oec_state)
+            planets = merge_planets(nasa_planets or [], oec_planets or [])
+            if planets_pending:
+                st.markdown(
+                    '<div class="runa-loading-status" role="status">'
+                    '<span class="runa-loading-spinner" aria-hidden="true"></span>'
+                    'Searching planetary catalogues…</div>',
+                    unsafe_allow_html=True,
                 )
-                oec_planets, oec_error = open_exoplanet_catalogue_planets_v2(
-                    star.get("query_name"), star.get("main_id"), identifiers,
-                )
-            planets = merge_planets(nasa_planets, oec_planets)
-            if not (nasa_error and oec_error):
+            if not planets_pending and not (nasa_error and oec_error):
                 confirmed_count = sum(
                     planet.get("status") == "Confirmed" for planet in planets
                 )
@@ -3046,7 +3176,7 @@ elif tool == "Planets":
                     f'{citation_html}{candidate_html}</div>',
                     unsafe_allow_html=True,
                 )
-            if not planets:
+            if not planets and not planets_pending:
                 if nasa_error and oec_error:
                     st.error("Neither planetary catalogue could be reached right now.")
                 else:
@@ -3073,12 +3203,18 @@ elif tool == "Planets":
 
     with planet_population_card:
         panel_heading("Planet population")
-        population = load_planet_population()
-        population_figure, target_points, population_size = planet_population_figure(
-            population,
-            planets if star is not None else [],
-        )
-        if population_figure is None:
+        population, population_state = analysis_result("planets_population") if star is not None else (load_planet_population(), "complete")
+        if population_state == "pending":
+            population_figure, target_points, population_size = None, [], 0
+            st.caption("Loading the planet population…")
+        else:
+            population_figure, target_points, population_size = planet_population_figure(
+                population,
+                planets if star is not None else [],
+            )
+        if population_state == "pending":
+            pass
+        elif population_figure is None:
             st.info("The bundled exoplanet population is unavailable.")
         else:
             st.pyplot(population_figure, use_container_width=True)
@@ -3111,20 +3247,13 @@ elif tool == "Planets":
                 st.info("SIMBAD did not return a TIC or TOI identifier for this object.")
             else:
                 st.caption(
-                    f"SIMBAD identifier: {tess_name['label']}. "
-                    "The curve is loaded only when requested."
+                    f"SIMBAD identifier: {tess_name['label']}."
                 )
-                if st.button(
-                    "Load TESS light curve",
-                    key="load_tess_light_curve",
-                    use_container_width=True,
-                ):
-                    with st.spinner("Querying MAST for a TESS light curve..."):
-                        st.session_state["tess_light_curve"] = fetch_tess_light_curve(star)
-
-                tess_curve = st.session_state.get("tess_light_curve")
-                if tess_curve is None:
-                    st.write("Select the button to query the TESS SPOC archive.")
+                tess_curve, tess_state = analysis_result("planets_tess")
+                if tess_state == "pending":
+                    st.caption("Querying MAST for a TESS light curve…")
+                elif tess_state == "error":
+                    st.info("The TESS light-curve query could not be completed.")
                 elif tess_curve.get("error"):
                     st.info(tess_curve["error"])
                 else:
@@ -3148,14 +3277,10 @@ elif tool == "Multiplicity":
         if star is None:
             st.write("Choose a star in **Identification** first.")
         else:
-            try:
-                with st.spinner("Searching the WDS catalogue..."):
-                    wds_pair = wds_closest_component(
-                        star.get("ra"), star.get("dec"),
-                        tuple(star.get("identifiers", [])),
-                    )
-            except Exception:
-                LOGGER.exception("WDS search failed")
+            wds_pair, wds_state = analysis_result("multiplicity_wds")
+            if wds_state == "pending":
+                st.caption("Searching the WDS catalogue…")
+            elif wds_state == "error":
                 st.warning("The WDS search could not be completed. Try again later.")
             else:
                 if wds_pair:
@@ -3184,12 +3309,8 @@ elif tool == "Multiplicity":
     query_error = None
     answer = None
     if star is not None and star["gaia_id"]:
-        try:
-            with st.spinner("Loading Gaia multiplicity criteria..."):
-                answer = multiplicity_criteria(star["gaia_id"])
-        except ValueError as error:
-            query_error = str(error)
-        except Exception:
+        answer, criteria_state = analysis_result("multiplicity_criteria")
+        if criteria_state == "error":
             query_error = "The Gaia query failed. Please try again later."
 
     with input_card:
@@ -3265,15 +3386,20 @@ elif tool == "Multiplicity":
             )
             gaia_ra = star["gaia_photometry"].get("ra", star["ra"])
             gaia_dec = star["gaia_photometry"].get("dec", star["dec"])
-            try:
-                with st.spinner("Loading nearby Gaia sources..."):
-                    nearby = nearby_gaia_sources_v3(
-                        gaia_ra, gaia_dec, radius_arcsec
-                    )
-                nearby = prepare_neighbours(nearby, gaia_ra, gaia_dec)
-            except Exception:
+            if radius_arcsec == 180:
+                nearby, nearby_state = analysis_result("multiplicity_neighbours")
+            else:
+                try:
+                    nearby = nearby_gaia_sources_v3(gaia_ra, gaia_dec, radius_arcsec)
+                    nearby_state = "complete"
+                except Exception:
+                    nearby, nearby_state = None, "error"
+            if nearby_state == "pending":
+                st.caption("Loading nearby Gaia sources…")
+            elif nearby_state == "error":
                 st.error("The nearby Gaia query could not be completed.")
             else:
+                nearby = prepare_neighbours(nearby, gaia_ra, gaia_dec)
                 if nearby:
                     local_fig = local_proper_motion_plot(
                         nearby, radius_arcsec, star.get("gaia_id")
@@ -3298,10 +3424,10 @@ elif tool == "Multiplicity":
         elif not star.get("gaia_id"):
             st.info("A Gaia DR3 ID is needed to retrieve the time series.")
         else:
-            try:
-                with st.spinner("Loading Gaia G, BP and RP time series..."):
-                    epoch_data = gaia_epoch_photometry(star["gaia_id"])
-            except Exception:
+            epoch_data, epoch_state = analysis_result("multiplicity_epoch")
+            if epoch_state == "pending":
+                st.caption("Loading Gaia G, BP and RP time series…")
+            elif epoch_state == "error":
                 st.warning("The Gaia epoch-photometry query could not be completed. Try again later.")
             else:
                 if epoch_data.empty:
@@ -3331,9 +3457,15 @@ elif tool == "Multiplicity":
             st.write("Choose a star in **Identification** first.")
         elif not star["gaia_id"]:
             st.write("A Gaia DR3 ID is needed to score this source.")
+        elif answer is None:
+            st.caption("Loading Gaia multiplicity criteria…")
         else:
             values, _ = answer
-            multiplicity_ml_result(values)
+            scoring, scoring_state = analysis_result("multiplicity_model")
+            if scoring_state == "error":
+                st.warning("The multiplicity model could not score this source.")
+            else:
+                multiplicity_ml_result(values, scoring)
         with st.expander("Multiplicity criteria", expanded=False):
             st.caption("Based on Cifuentes et al. (2025), Table 3.")
             if query_error:
@@ -3342,6 +3474,8 @@ elif tool == "Multiplicity":
                 st.write("Choose a star in **Identification** first.")
             elif not star["gaia_id"]:
                 st.write("A Gaia DR3 ID is needed for these indicators.")
+            elif answer is None:
+                st.caption("Loading Gaia multiplicity criteria…")
             else:
                 values, criteria = answer
                 strong_indicators = any(criteria[number] for number in (1, 2, 3, 4, 5, 7))
@@ -3409,9 +3543,7 @@ elif tool == "Multiplicity":
 
     with archive_card:
         panel_heading("Spectroscopic archives")
-        st.caption(
-            "Search public spectroscopic archives on demand."
-        )
+        st.caption("Searching public spectroscopic archives automatically.")
         st.markdown(
             '<div class="runa-caution-note" role="note">'
             '<span class="runa-caution-icon" aria-hidden="true">!</span>'
@@ -3426,44 +3558,14 @@ elif tool == "Multiplicity":
             gaia_astrometry = star.get("gaia_photometry") or {}
             archive_ra = gaia_astrometry.get("ra", star.get("ra"))
             archive_dec = gaia_astrometry.get("dec", star.get("dec"))
-            archive_key = (
-                str(star.get("main_id")), archive_ra, archive_dec,
-                gaia_astrometry.get("pmra"), gaia_astrometry.get("pmdec"),
-                gaia_astrometry.get("ref_epoch"),
-            )
-            if st.button(
-                "Search spectroscopic archives",
-                key=f"search_spectroscopy_archives_{star['main_id']}",
-                type="secondary",
-                use_container_width=True,
-            ):
-                try:
-                    with st.spinner("Searching archival spectroscopy...", show_time=True):
-                        archive_result = archival_spectroscopy_search_v4(
-                            archive_ra,
-                            archive_dec,
-                            gaia_astrometry.get("pmra"),
-                            gaia_astrometry.get("pmdec"),
-                            gaia_astrometry.get("ref_epoch"),
-                        )
-                    st.session_state["spectroscopy_archives"] = {
-                        "key": archive_key,
-                        "result": archive_result,
-                    }
-                except Exception:
-                    LOGGER.exception("Archival spectroscopy search failed")
-                    st.session_state["spectroscopy_archives"] = {
-                        "key": archive_key,
-                        "error": "The archive search could not be completed. Try again later.",
-                    }
-
-            saved_archive = st.session_state.get("spectroscopy_archives")
-            if saved_archive and saved_archive.get("key") == archive_key:
+            archive_result, archive_state = analysis_result("multiplicity_archives")
+            if archive_state == "pending":
+                st.caption("Searching archival spectroscopy…")
+            elif archive_state == "error":
+                st.warning("The archive search could not be completed. Try again later.")
+            else:
                 st.markdown("**Spectroscopic archives**")
-                if saved_archive.get("error"):
-                    st.warning(saved_archive["error"])
-                else:
-                    archive_result = saved_archive["result"]
+                if archive_result is not None:
                     archive_rows = archive_result["rows"]
                     st.dataframe(
                         archive_result["sources"],
@@ -3552,9 +3654,12 @@ elif tool == "Multiplicity":
         if star is None or not star.get("gaia_id") or values is None:
             st.info("A Gaia DR3 source with multiplicity criteria is needed for this plot.")
         else:
-            try:
-                with st.spinner("Loading Gaia stars within 10 pc..."):
-                    rvs_reference = rvs_reference_sample_v2()
+            rvs_reference, rvs_state = analysis_result("multiplicity_rvs")
+            if rvs_state == "pending":
+                st.caption("Loading Gaia stars within 10 pc…")
+            elif rvs_state == "error":
+                st.error("The Gaia RVS comparison sample could not be loaded.")
+            else:
                 rvs_reference = [
                     source for source in rvs_reference
                     if source.get("source_id") != str(star["gaia_id"])
@@ -3562,8 +3667,6 @@ elif tool == "Multiplicity":
                 target_rvs_plot = rvs_ruwe_plot(
                     rvs_reference, values, star["main_id"]
                 )
-            except Exception:
-                st.error("The Gaia RVS comparison sample could not be loaded.")
         if target_rvs_plot is not None:
             st.pyplot(target_rvs_plot, use_container_width=True)
             plt.close(target_rvs_plot)

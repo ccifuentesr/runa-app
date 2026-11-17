@@ -60,7 +60,9 @@ Applies the seven Gaia DR3 statistical indicators from Cifuentes et al. (2025, T
 
 The target indicators and observation counts use Gaia ESA first and fall back to Gaia DR3 in VizieR, matched by the exact source ID. The nearby-source cone query also falls back to the VizieR Gaia DR3 catalogue when ESA is unavailable. The ten-parsec RVS comparison sample uses Gaia ESA first and Gaia@AIP as a fallback. Unpublished measurements remain unavailable; missing values are not replaced by zero.
 
-An on-demand archive search reports positionally matched ESO raw science spectra, CARMENES DR1 spectra and the public NOT/FIES target lists. It shows instruments, observing dates, exposure times, programme metadata and public-release status when supplied by the source. Official HARPS-N/TNG, WHT/ING and full Calar Alto archive interfaces are linked for manual review where RUNA has no stable documented query. Gaia positions are propagated to the observing epoch before the final match. Archive coverage is presented as observational context, not as evidence that a source is single or that its radial velocities have been analysed.
+After an object is identified, RUNA starts the photometric, stellar-parameter, kinematic, multiplicity and planetary queries in the background. Sidebar indicators show progress and completion independently of the open section. Catalogue photometry is available as one CSV export when its search finishes.
+
+The automatic archive search reports positionally matched ESO raw science spectra, CARMENES DR1 spectra and the public NOT/FIES target lists. It shows instruments, observing dates, exposure times, programme metadata and public-release status when supplied by the source. Official HARPS-N/TNG, WHT/ING and full Calar Alto archive interfaces are linked for manual review where RUNA has no stable documented query. Gaia positions are propagated to the observing epoch before the final match. Archive coverage is presented as observational context, not as evidence that a source is single or that its radial velocities have been analysed.
 
 Automatically retrieves Gaia DR3 epoch photometry from Gaia@AIP below the nearby-source view. G, BP and RP are plotted on an inverted magnitude axis, with per-observation variability rejection flags and a CSV download. A successful query with no published series is distinguished from a service error. The implementation follows `kobe.query_gaia_lightcurve.py`.
 
@@ -86,7 +88,7 @@ evaluate_multiplicity_models.py  Grouped multiplicity-model evaluation
 parameters.py             Magnitudes, luminosity, metallicity and mass relations
 mamajek.py                Mean dwarf sequence from the bundled reference table
 multiplicity.py           Gaia DR3 multiplicity indicators
-eso_archive.py            On-demand ESO archival spectroscopy search
+eso_archive.py            Automatic ESO archival spectroscopy search
 spectroscopy_archives.py  CARMENES, NOT/FIES and multi-archive coordination
 kinematics.py             Coordinate propagation and BANYAN Σ inputs
 light_curves.py           TESS light curves

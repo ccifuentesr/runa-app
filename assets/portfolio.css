@@ -30,6 +30,7 @@ section[data-testid="stSidebar"][data-collapsed="false"] {width: 15.5rem !import
 section[data-testid="stSidebar"][data-collapsed="true"] {width: 0 !important; min-width: 0 !important; border: 0 !important;}
 section[data-testid="stSidebar"] [data-testid="stSidebarContent"] {padding: .65rem .7rem 1rem !important;}
 section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {padding-bottom: .5rem !important;}
+div[data-testid="stSidebarCollapseButton"], div[data-testid="stExpandSidebarButton"] {display:none !important;}
 /* Streamlit's default one-rem block gap otherwise separates every menu row. */
 section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] [data-testid="stVerticalBlock"] {gap: 2px !important;}
 section[data-testid="stSidebar"] [data-testid="stImage"] {width: 160px !important; max-width: 160px !important; margin: .35rem .45rem 1rem !important;}
@@ -40,9 +41,52 @@ section[data-testid="stSidebar"] [data-testid="stElementContainer"]:has(.runa-si
   position: relative; z-index: 1;
 }
 .runa-sidebar-group {display:block; position:relative; margin:0; padding: .25rem 10px; color: #8b8d97; font: 500 .79rem/1.5 var(--runa-sans); text-transform: none; letter-spacing: 0;}
+.stApp .st-key-workspace_utility_coordinates button,
+.stApp .st-key-workspace_utility_spectral_type button {height:34px !important;min-height:34px !important;justify-content:flex-start !important;text-align:left !important;padding:0 !important;border:0 !important;border-radius:6px !important;background:transparent !important;box-shadow:none !important;color:#a6a7b0 !important;}
+.stApp .st-key-workspace_utility_coordinates,
+.stApp .st-key-workspace_utility_spectral_type {width:100% !important;margin:0 !important;}
+.stApp .st-key-workspace_utility_spectral_type {margin-top:-.55rem !important;}
+.stApp .st-key-workspace_utility_coordinates [data-testid="stButton"] button,
+.stApp .st-key-workspace_utility_spectral_type [data-testid="stButton"] button {width:100% !important;display:flex !important;justify-content:flex-start !important;text-align:left !important;padding-left:0 !important;}
+.stApp .st-key-workspace_utility_coordinates [data-testid="stButton"],
+.stApp .st-key-workspace_utility_spectral_type [data-testid="stButton"] {width:100% !important;}
+.stApp .st-key-workspace_utility_coordinates [data-testid="stButton"] button > div,
+.stApp .st-key-workspace_utility_spectral_type [data-testid="stButton"] button > div,
+.stApp .st-key-workspace_utility_coordinates [data-testid="stButton"] button p,
+.stApp .st-key-workspace_utility_spectral_type [data-testid="stButton"] button p {width:100% !important;margin:0 !important;text-align:left !important;}
+.stApp .st-key-workspace_utility_coordinates [data-testid="stButton"] button > div,
+.stApp .st-key-workspace_utility_spectral_type [data-testid="stButton"] button > div {display:block !important;flex:1 1 auto !important;}
+.stApp .st-key-workspace_utility_coordinates button p,
+.stApp .st-key-workspace_utility_spectral_type button p {width:100% !important;margin:0 !important;font:500 1rem/1.25 var(--runa-mono) !important;text-align:left !important;}
+.stApp .st-key-workspace_utility_coordinates button:hover,
+.stApp .st-key-workspace_utility_spectral_type button:hover {background:#1b1b1e !important;color:#e4e4e7 !important;}
+.stApp .st-key-workspace_utility_coordinates button[data-testid="stBaseButton-primary"],
+.stApp .st-key-workspace_utility_spectral_type button[data-testid="stBaseButton-primary"] {color:var(--runa-accent) !important;background:transparent !important;}
+.stApp .runa-utility-row-label {padding:.35rem 0;color:#b8b9c1;font-size:1rem;font-weight:500;white-space:nowrap;}
+.stApp .st-key-utilities_selected_card [data-testid="stElementContainer"] {margin-bottom:.18rem !important;}
+.stApp .st-key-utilities_selected_card [data-testid="stNumberInputRootElement"],
+.stApp .st-key-utilities_selected_card [data-testid="stTextInputRootElement"],
+.stApp .st-key-utilities_selected_card [data-baseweb="select"] > div {min-height:2.15rem !important;background:#202126 !important;border:0 !important;box-shadow:none !important;}
+.stApp .st-key-utilities_selected_card [data-testid="stNumberInputRootElement"] {background:#292a30 !important;border:0 !important;box-shadow:none !important;}
+.stApp .st-key-utilities_selected_card [data-testid="stNumberInputRootElement"] input,
+.stApp .st-key-utilities_selected_card [data-testid="stTextInputRootElement"] input {color:#f0f0f4 !important;}
+.stApp .st-key-utilities_selected_card [data-testid="stNumberInput"] button {display:none !important;}
+.stApp .st-key-utilities_selected_card [data-testid="stNumberInput"] [data-testid="stNumberInputRootElement"] {padding-right:.45rem !important;}
+.stApp .st-key-utilities_selected_card [data-testid="stNumberInputRootElement"] input,
+.stApp .st-key-utilities_selected_card [data-testid="stTextInputRootElement"] input {padding-top:.28rem !important;padding-bottom:.28rem !important;font-size:.86rem !important;}
+.stApp .st-key-utilities_selected_card input[type="number"] {background:#292a30 !important;border-radius:4px !important;color:#f0f0f4 !important;}
+.stApp .runa-spectral-estimate > span {font-size:1rem !important;color:#b8b9c1 !important;}
+.stApp .runa-spectral-estimate > strong {font-size:2rem !important;}
+.stApp .st-key-utility_reference_mode [data-testid="stSegmentedControl"] {min-height:2.15rem !important;}
+.stApp .st-key-utility_reference_mode button {min-height:2.15rem !important;height:2.15rem !important;padding:0 .45rem !important;font:500 .75rem/1 var(--runa-sans) !important;}
+.stApp .st-key-utility_reference_epoch_text input:disabled {color:#a1a1aa !important;opacity:1 !important;}
 .runa-sidebar-reference {font-size: 1.05rem; line-height: 1.4;}
 section[data-testid="stSidebar"] [data-testid="stElementContainer"] {flex-shrink:0 !important;}
 section[data-testid="stSidebar"] [data-testid="stButton"] {margin: 0 0 0 12px !important; width:calc(100% - 12px) !important; position:relative;}
+section[data-testid="stSidebar"] .st-key-utility_coordinates_at_epoch,
+section[data-testid="stSidebar"] .st-key-utility_spectral_type_estimation {margin-left:1.2rem !important;width:calc(100% - 1.2rem) !important;}
+section[data-testid="stSidebar"] .st-key-utility_coordinates_at_epoch button,
+section[data-testid="stSidebar"] .st-key-utility_spectral_type_estimation button {height:32px !important;min-height:32px !important;padding-left:1rem !important;font-size:.86rem !important;}
 section[data-testid="stSidebar"] [data-testid="stButton"] button {
   width: 100% !important; height: 36px !important; min-height: 36px !important; padding: 0 10px !important;
   border: 0 !important; border-radius: 6px !important;
@@ -100,6 +144,10 @@ section[data-testid="stSidebar"] .st-key-runa_object_name input {font: 400 .88re
   border: 0 !important; box-shadow: none !important; border-radius: 6px !important;
   background: var(--runa-surface) !important;
 }
+.stApp .runa-photometry-warning {position:relative;display:inline-flex;align-items:center;justify-content:center;width:.95rem;height:.95rem;margin-left:.35rem;border:1px solid #b89443;border-radius:50%;color:#f4cf75;font:600 .65rem/1 var(--runa-sans);vertical-align:.04em;cursor:help;}
+.stApp .runa-photometry-warning:hover,.stApp .runa-photometry-warning:focus {z-index:20;outline:0;}
+.stApp .runa-photometry-warning-text {display:none;position:absolute;left:50%;bottom:calc(100% + .45rem);transform:translateX(-50%);width:max-content;max-width:min(19rem,75vw);padding:.55rem .7rem;border-radius:5px;background:#232326;color:#e4e4e7;font:400 .76rem/1.4 var(--runa-sans);letter-spacing:0;text-transform:none;white-space:normal;box-shadow:0 5px 18px #0009;}
+.stApp .runa-photometry-warning:hover .runa-photometry-warning-text,.stApp .runa-photometry-warning:focus .runa-photometry-warning-text {display:block;}
 .stApp .runa-panel-heading, .stApp .runa-section-title,
 .stApp .runa-parameter-kind, .stApp .model-flow-step small,
 .stApp .model-split-card small {
@@ -122,10 +170,12 @@ section[data-testid="stSidebar"] .st-key-runa_object_name input {font: 400 .88re
 .stApp .parameter-reference, .stApp .parameter-reference a,
 .stApp .parameter-method, .stApp .runa-parameter-source {color: #85858e !important;}
 .stApp .st-key-parameters_estimated .parameter-number:not(.parameter-input) {color:#f4f4f5 !important;}
-.stApp .st-key-parameters_estimated .parameter-block-luminosity .parameter-number:not(.parameter-input),
-.stApp .st-key-parameters_estimated .parameter-block-radius .parameter-number:not(.parameter-input),
-.stApp .st-key-parameters_estimated .parameter-block-mass .parameter-number:not(.parameter-input) {color:#f4cf75 !important;}
+.stApp .st-key-parameters_estimated .runa-estimate-luminosity .parameter-number:not(.parameter-input),
+.stApp .st-key-parameters_estimated .runa-estimate-radius .parameter-number:not(.parameter-input),
+.stApp .st-key-parameters_estimated .runa-estimate-mass .parameter-number:not(.parameter-input) {color:#f4cf75 !important;}
 .stApp .st-key-parameters_estimated .parameter-number .parameter-uncertainty {color:#92929d !important;}
+.stApp .st-key-parameters_estimated .parameter-number.parameter-input {color:#85858e !important;}
+.stApp .st-key-parameters_estimated .runa-estimate-origin {display:block;margin-top:.1rem;color:#85858e;font-size:.72rem;font-weight:400;line-height:1.3;letter-spacing:0;}
 .stApp .runa-data-value, .stApp .runa-summary-value {font-variant-numeric: tabular-nums; font-weight: 500 !important;}
 .stApp .runa-parameter-published .runa-parameter-kind,
 .stApp .runa-parameter-estimated .runa-parameter-kind {color: var(--runa-muted) !important;}
@@ -145,6 +195,9 @@ section[data-testid="stSidebar"] .st-key-runa_object_name input {font: 400 .88re
 .stApp [class*="st-key-coordinate_epoch_up_"] button:hover {background: #1b1b1e !important; color: #e4e4e7 !important;}
 .stApp [class*="st-key-coordinate_epoch_down_"] button:focus,
 .stApp [class*="st-key-coordinate_epoch_up_"] button:focus {outline: 0 !important;}
+.stApp .st-key-utilities_coordinates_card input[type="number"]::-webkit-inner-spin-button,
+.stApp .st-key-utilities_coordinates_card input[type="number"]::-webkit-outer-spin-button {-webkit-appearance:none;margin:0;}
+.stApp .st-key-utilities_coordinates_card input[type="number"] {-moz-appearance:textfield;}
 .runa-parameter-compact {margin: .15rem 0 .5rem !important; overflow: visible !important;}
 .runa-parameter-compact .runa-parameter-compact-row {grid-template-columns: minmax(6.5rem,.8fr) minmax(0,1.35fr) minmax(2.5rem,.35fr) minmax(4.5rem,.8fr) !important; gap: .45rem !important; padding: .42rem .7rem !important;}
 .runa-parameter-compact .runa-data-label {font-size: 1.04rem !important; padding-left: 0 !important;}
