@@ -1938,7 +1938,7 @@ if tool == "Search an object":
     with home_column:
         with st.container(key="runa_home_search"):
             st.text_input(
-                "Object name or catalogue ID", placeholder="e.g. Wolf 47",
+                "Object name or catalogue ID", placeholder="e.g. KOBE-1",
                 key="runa_home_object_name",
                 on_change=request_object_search,
                 args=("home",),
