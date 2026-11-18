@@ -154,19 +154,21 @@ def rvs_ruwe_plot(reference, target_values, target_name):
     )
     ax.axvline(2.0, color="#d8a099", linestyle=(0, (4, 3)), linewidth=0.9)
     ax.axhline(2.0, color="#d8a099", linestyle=(0, (4, 3)), linewidth=0.9)
-    ax.set_xscale("log")
-    ax.set_xlim(0.7, max(3.0, target_ruwe * 1.4))
+    ax.set_xlim(0.0, max(3.0, target_ruwe * 1.4))
     ax.set_ylim(0.0, 3.1)
-    ax.set_xlabel("RUWE", fontsize=13, color="#d4d4d8")
+    ax.set_xlabel("RUWE", fontsize=13, color="#f4f4f5", labelpad=10)
     ax.set_ylabel("RV variability score (RVS)", fontsize=13, color="#d4d4d8")
-    ax.tick_params(colors="#a1a1aa", labelsize=10)
+    ax.tick_params(axis="x", colors="#e4e4e7", labelsize=11, pad=6)
+    ax.tick_params(axis="y", colors="#a1a1aa", labelsize=10)
     for spine in ax.spines.values():
         spine.set_color("#3f3f46")
+    ax.spines["bottom"].set_color("#a1a1aa")
     ax.legend(
         facecolor="#19191e", edgecolor="#3f3f46", labelcolor="#d4d4d8",
         frameon=True, fontsize=9, loc="upper left",
     )
-    fig.tight_layout()
+    fig.tight_layout(pad=1.6)
+    fig.subplots_adjust(bottom=0.19)
     return fig
 
 

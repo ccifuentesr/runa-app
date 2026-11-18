@@ -256,6 +256,8 @@ def stellar_parameter_table(groups, additional_measurements=None):
                 estimated = title == "Estimated"
                 rows = []
                 for name, unit, published_rows, estimated_rows in groups:
+                    if estimated and name == "Metallicity":
+                        continue
                     unit_html = escape(unit)
                     if unit in ("L☉", "R☉", "M☉"):
                         unit_html = f'{unit[0]}<sub>☉</sub>'

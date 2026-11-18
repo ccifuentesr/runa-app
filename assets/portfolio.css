@@ -119,9 +119,22 @@ section[data-testid="stSidebar"] [data-testid="stButton"] button[data-testid="st
 .stApp button p {font-family: var(--runa-mono) !important; font-size: .85rem;}
 .stApp button:focus-visible, .stApp a:focus-visible {outline: 2px solid var(--runa-accent) !important; outline-offset: 3px;}
 [data-testid="stForm"] {padding: 0 !important;}
-section[data-testid="stSidebar"] .st-key-runa_object_name {margin: 0 .35rem 1rem !important;}
-section[data-testid="stSidebar"] .st-key-runa_object_name [data-testid="stTextInputRootElement"] {background: #1b1c20 !important; border: 0 !important; box-shadow: none !important;}
-section[data-testid="stSidebar"] .st-key-runa_object_name input {font: 400 .88rem/1.4 var(--runa-sans) !important; color: #ececf0 !important;}
+section[data-testid="stSidebar"] .st-key-runa_object_name {margin: 0 .35rem .8rem !important;}
+section[data-testid="stSidebar"] .st-key-runa_object_name label {margin-bottom: .3rem !important;}
+section[data-testid="stSidebar"] .st-key-runa_object_name label p {font: 600 .92rem/1.25 var(--runa-sans) !important; color: #f2f3f4 !important;}
+section[data-testid="stSidebar"] .st-key-runa_object_name [data-testid="stTextInputRootElement"] {min-height: 2.7rem !important; background: #292b30 !important; border: 0 !important; box-shadow: none !important; border-radius: 6px !important;}
+section[data-testid="stSidebar"] .st-key-runa_object_name [data-testid="stTextInputRootElement"]:focus-within {background: #303238 !important; box-shadow: inset 0 -2px 0 var(--runa-accent) !important;}
+section[data-testid="stSidebar"] .st-key-runa_object_name input {font: 400 .94rem/1.4 var(--runa-sans) !important; color: #f4f4f5 !important;}
+section[data-testid="stSidebar"] .st-key-runa_object_name input::placeholder {color: #b8bac1 !important; opacity: 1 !important;}
+.stApp .st-key-runa_home_search {margin-top: clamp(5rem, 13vh, 9rem) !important;}
+.stApp .st-key-runa_home_search label {margin-bottom: .45rem !important;}
+.stApp .st-key-runa_home_search label p {font: 500 1.08rem/1.3 var(--runa-sans) !important; color: #f4f4f5 !important;}
+.stApp .st-key-runa_home_search [data-testid="stTextInputRootElement"] {min-height: 3.25rem !important; background: #292b30 !important; border: 0 !important; border-radius: 6px !important; box-shadow: none !important;}
+.stApp .st-key-runa_home_search [data-testid="stTextInputRootElement"]:focus-within {background: #303238 !important; box-shadow: inset 0 -2px 0 var(--runa-accent) !important;}
+.stApp .st-key-runa_home_search input {font: 400 1.02rem/1.4 var(--runa-sans) !important; color: #f4f4f5 !important;}
+.stApp .st-key-runa_home_search input::placeholder {color: #aeb1b9 !important; opacity: 1 !important;}
+.stApp .st-key-runa_home_search [data-testid="stCaptionContainer"] p {color: #858892 !important; font-size: .8rem !important;}
+.stApp .runa-home-scope {max-width: 30rem; margin: 1.05rem 0 0; color: #a1a1aa; font: 400 .88rem/1.55 var(--runa-sans);}
 .stApp [data-testid="stTextInputRootElement"], .stApp [data-baseweb="select"] > div {background: var(--runa-surface); border-radius: 5px;}
 /* Quiet surfaces throughout the scientific tools, including module-local styles. */
 .stApp [data-testid="stVerticalBlockBorderWrapper"],

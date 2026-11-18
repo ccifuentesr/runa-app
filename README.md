@@ -48,7 +48,7 @@ Documents the offline evaluation of the spectral-type estimator and its training
 
 ### Parameters
 
-**Status: In preparation.** Calculates absolute magnitudes and displays matched published bolometric luminosities from [Cifuentes et al. (2020)](https://doi.org/10.1051/0004-6361/202038295) and [Cifuentes et al. (2025)](https://ui.adsabs.harvard.edu/abs/2025A%26A...693A.228C/abstract). A separate panel lists bibliographic SIMBAD measurements of [Fe/H], projected rotation, rotational period and spectral type, with links to their original references. When applicable, RUNA estimates mass from the main-sequence mass–luminosity relation of [Eker et al. (2018)](https://doi.org/10.1093/mnras/sty1834), without extrapolating outside its published intervals. It also includes an experimental Gaia/WISE photometric metallicity estimate based on [Duque-Arribas et al. (2023)](https://doi.org/10.3847/1538-4357/acacf6).
+**Status: In preparation.** Calculates absolute magnitudes and displays matched published bolometric luminosities from [Cifuentes et al. (2020)](https://doi.org/10.1051/0004-6361/202038295) and [Cifuentes et al. (2025)](https://ui.adsabs.harvard.edu/abs/2025A%26A...693A.228C/abstract). A separate panel lists bibliographic SIMBAD measurements of [Fe/H], projected rotation, rotational period and spectral type, with links to their original references. When applicable, RUNA estimates mass from the main-sequence mass–luminosity relation of [Eker et al. (2018)](https://doi.org/10.1093/mnras/sty1834), without extrapolating outside its published intervals.
 
 ### Kinematics
 

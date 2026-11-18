@@ -42,7 +42,6 @@ from survey_view import survey_image_view
 from parameters import (
     calculate_parameters,
     mass_from_luminosity_eker,
-    metallicity_from_gaia_wise,
     radius_from_luminosity_temperature,
 )
 from photometry import (
@@ -1721,11 +1720,11 @@ if "analysis_object" not in st.session_state:
     st.session_state["analysis_object"] = None
 
 available_tools = [
-    "Identification", "Photometry", "Parameters", "Kinematics", "Multiplicity", "Planets", "Utilities",
+    "Search an object", "Identification", "Photometry", "Parameters", "Kinematics", "Multiplicity", "Planets", "Utilities",
 ]
-current_tool = st.session_state.get("runa_tool", "Identification")
+current_tool = st.session_state.get("runa_tool", "Search an object")
 if current_tool not in [*available_tools, "Data", "Models"]:
-    current_tool = "Identification"
+    current_tool = "Search an object"
 if "runa_tool" not in st.session_state:
     st.session_state["runa_tool"] = current_tool
 if "utility_tool" not in st.session_state:
@@ -1793,9 +1792,18 @@ def sexagesimal_one_decimal(value, right_ascension=False):
     return f"{sign}{first % 24 if right_ascension else first:02d}:{minute:02d}:{tenth_seconds / 10:04.1f}"
 
 
-def request_object_search():
-    """Run the object lookup when the sidebar field is submitted."""
-    st.session_state["runa_search_requested"] = True
+def request_object_search(source):
+    """Send either search field through the same object lookup."""
+    source_key = "runa_object_name" if source == "sidebar" else "runa_home_object_name"
+    other_key = "runa_home_object_name" if source == "sidebar" else "runa_object_name"
+    name = str(st.session_state.get(source_key, "")).strip()
+    st.session_state[other_key] = name
+    loaded = st.session_state.get("star")
+    if loaded and name.casefold() == str(loaded.get("query_name") or "").strip().casefold():
+        st.session_state["runa_search_requested"] = False
+        return
+    st.session_state["runa_search_name"] = name
+    st.session_state["runa_search_requested"] = bool(name)
 
 
 def adjust_coordinate_epoch(key, step):
@@ -1811,6 +1819,7 @@ navigation_sections = (
     (
         None,
         (
+            ("Search an object", ":material/search:"),
             ("Identification", ":material/manage_search:"),
             ("Photometry", ":material/gradient:"),
             ("Parameters", ":material/tune:"),
@@ -1836,6 +1845,8 @@ if loaded_star and st.session_state.get("analysis_object") != catalogue_photomet
 status_styles = []
 search_in_progress = bool(st.session_state.get("runa_search_requested"))
 for section in available_tools:
+    if section == "Search an object":
+        continue
     state = "pending" if search_in_progress else analysis_section_status(section)
     selector = f'.st-key-runa_linear_{section.lower()} button::after'
     if state == "pending":
@@ -1880,13 +1891,11 @@ with st.sidebar:
         str(Path(__file__).resolve().parent / "assets" / "runa-logo-sidebar.png"),
         width=320,
     )
-    top_name = st.text_input(
-        "Object name", placeholder="Search object…",
-        label_visibility="collapsed", key="runa_object_name",
+    st.text_input(
+        "Search an object", placeholder="Name or catalogue ID",
+        key="runa_object_name",
         on_change=request_object_search,
-    )
-    top_submitted = bool(
-        st.session_state.pop("runa_search_requested", False) and top_name.strip()
+        args=("sidebar",),
     )
     for section_name, section_items in navigation_sections:
         if section_name:
@@ -1914,8 +1923,8 @@ tool = st.session_state["runa_tool"]
 star = st.session_state["star"]
 context_object = (
     f'<span>{escape(str(star["main_id"]))}</span>'
-    if star and tool != "Utilities" else
-    '<span>No object loaded</span>' if not star and tool != "Utilities" else ""
+    if star and tool not in ("Utilities", "Search an object") else
+    '<span>No object loaded</span>' if not star and tool not in ("Utilities", "Search an object") else ""
 )
 st.markdown(
     '<div class="runa-section-context">'
@@ -1923,19 +1932,37 @@ st.markdown(
     f'{context_object}</div>',
     unsafe_allow_html=True,
 )
+search_error_slot = None
+if tool == "Search an object":
+    _, home_column, _ = st.columns((1, 2.3, 1), gap="large")
+    with home_column:
+        with st.container(key="runa_home_search"):
+            st.text_input(
+                "Object name or catalogue ID", placeholder="e.g. Wolf 47",
+                key="runa_home_object_name",
+                on_change=request_object_search,
+                args=("home",),
+            )
+            st.caption("Press Enter to search.")
+            st.markdown(
+                '<p class="runa-home-scope">RUNA is optimised for nearby M dwarfs. '
+                'Its estimates use calibrated ranges in colour, luminosity and mass.</p>',
+                unsafe_allow_html=True,
+            )
+            search_error_slot = st.empty()
+            search_loading_slot = st.empty()
+
+search_name = st.session_state.pop("runa_search_name", "")
+search_submitted = bool(
+    st.session_state.pop("runa_search_requested", False) and search_name
+)
 search_error = None
-if top_submitted:
-    with st.spinner("Loading star and catalogue data...", show_time=True):
-        for future in st.session_state.get("analysis_jobs", {}).values():
-            future.cancel()
-        st.session_state["analysis_jobs"] = {}
-        st.session_state["analysis_results"] = {}
-        st.session_state["analysis_object"] = None
-        st.session_state["star"] = None
-        st.session_state["catalogue_photometry"] = None
-        star = None
+if search_submitted:
+    loading_location = search_loading_slot if tool == "Search an object" else st.empty()
+    with loading_location:
+      with st.spinner("Loading object and catalogue data...", show_time=True):
         try:
-            data = lookup_star(top_name)
+            data = lookup_star(search_name)
         except ValueError as error:
             search_error = str(error)
         except Exception:
@@ -1944,7 +1971,7 @@ if top_submitted:
             if data is None:
                 search_error = "No object was found for that name."
             else:
-                data["query_name"] = top_name.strip()
+                data["query_name"] = search_name
                 try:
                     data["gaia_photometry"] = gaia_source_photometry(data["gaia_id"])
                 except GaiaPhotometryUnavailable as error:
@@ -1953,13 +1980,23 @@ if top_submitted:
                 data["twomass_photometry"] = lookup_2mass_j(data["twomass_id"])
                 data["johnson_photometry"] = lookup_johnson_v(data["main_id"])
                 data["survey_image"] = fetch_survey_image(data["ra"], data["dec"])
+                for future in st.session_state.get("analysis_jobs", {}).values():
+                    future.cancel()
+                st.session_state["analysis_jobs"] = {}
+                st.session_state["analysis_results"] = {}
+                st.session_state["analysis_object"] = None
+                st.session_state["catalogue_photometry"] = None
                 st.session_state["star"] = data
+                st.session_state["runa_tool"] = "Identification"
                 st.rerun()
 
 if search_error:
-    st.error(search_error)
+    if search_error_slot is not None:
+        search_error_slot.error(search_error)
+    else:
+        st.error(search_error)
 
-if tool in ("Identification", "Data", "Models", "Parameters", "Utilities"):
+if tool in ("Search an object", "Identification", "Data", "Models", "Parameters", "Utilities"):
     input_card = None
     result_card = (
         st.container(border=False)
@@ -2018,7 +2055,10 @@ else:
         border=True, key="planets_tess_card"
     ) if tool == "Planets" else None
 
-if tool == "Data":
+if tool == "Search an object":
+    pass
+
+elif tool == "Data":
     st.markdown("### Reference data")
     st.caption(
         "Average astrophysical parameters and absolute magnitudes for K5 V–L2.0 "
@@ -2580,47 +2620,6 @@ elif tool == "Parameters":
             photometric_luminosity["value"], photometric_luminosity.get("error")
         ) if photometric_luminosity else None
     )
-    catalogue_records = st.session_state.get("catalogue_photometry")
-    metallicity = None
-    metallicity_inputs = []
-    if star is not None and catalogue_records is not None and parameters is not None:
-        gaia = star.get("gaia_photometry", {})
-        w1 = catalogue_band(catalogue_records, "AllWISE", "W1")
-        w2 = catalogue_band(catalogue_records, "AllWISE", "W2")
-        bp = catalogue_band(catalogue_records, "Gaia DR3", "BP")
-        rp = catalogue_band(catalogue_records, "Gaia DR3", "RP")
-        metallicity = metallicity_from_gaia_wise(
-            gaia.get("phot_g_mean_mag"),
-            gaia.get("phot_g_mean_mag_error"),
-            bp.get("value") if bp else None,
-            bp.get("error") if bp else None,
-            rp.get("value") if rp else None,
-            rp.get("error") if rp else None,
-            w1.get("value") if w1 else None,
-            w1.get("error") if w1 else None,
-            w2.get("value") if w2 else None,
-            w2.get("error") if w2 else None,
-            parameters["parallax"],
-            parameters["parallax_error"],
-        )
-        for catalogue, label, source_label in (
-            ("Gaia DR3", "BP", "Gaia DR3"),
-            ("Gaia DR3", "RP", "Gaia DR3"),
-            ("AllWISE", "W1", "AllWISE"),
-            ("AllWISE", "W2", "AllWISE"),
-        ):
-            band = catalogue_band(catalogue_records, catalogue, label)
-            if band and band.get("value") is not None:
-                metallicity_inputs.append(
-                    (
-                        label,
-                        f"{band['value']:.3f}",
-                        source_label,
-                        f"{band['error']:.3f}" if band.get("error") is not None else None,
-                        "mag",
-                    )
-                )
-
     with result_card:
         if star is None:
             st.info("Choose a star in **Identification** first.")
@@ -2683,7 +2682,7 @@ elif tool == "Parameters":
                     (
                         f"From {photometric_luminosity_band} and T_eff",
                         f'{estimated_radius["value"]:.4f}',
-                        "Stefan–Boltzmann law",
+                        "SB law",
                         f'{estimated_radius["error"]:.4f}'
                         if estimated_radius["error"] is not None else None,
                         "R☉",
@@ -2734,7 +2733,7 @@ elif tool == "Parameters":
             if preferred_temperature is not None and estimated_radius is not None:
                 temperature_estimates.append(
                     (
-                        "Published Teff used for R",
+                        "Published Teff",
                         f'{preferred_temperature["value"]:.0f}',
                         preferred_temperature["reference"],
                         (
@@ -2778,28 +2777,14 @@ elif tool == "Parameters":
                         "dex",
                     )
                 )
-            metallicity_estimates = []
-            if metallicity is not None:
-                metallicity_estimates.append(
-                    (
-                        "[Fe/H]",
-                        f"{metallicity['value']:.3f}",
-                        "Duque-Arribas et al. (2023)",
-                        f"{metallicity['error']:.3f}",
-                        "dex",
-                    )
-                )
-
             object_panel_title(star)
             stellar_parameter_table([
                 ("Luminosity", "L☉", luminosity_rows, luminosity_estimates),
                 ("Teff", "K", temperature_rows, temperature_estimates),
                 ("Radius", "R☉", radius_rows, radius_estimates),
                 ("Mass", "M☉", mass_rows, mass_estimates),
-                ("Metallicity", "dex", metallicity_rows, metallicity_estimates),
+                ("Metallicity", "dex", metallicity_rows, []),
             ], additional_measurements=additional_measurements)
-            if catalogue_records is None:
-                st.caption("Photometric catalogues are loading for the metallicity estimate.")
             with st.expander("Model scopes", expanded=False):
                 st.caption(
                     "Published values use Cifuentes et al. (2025) when both bundled "
