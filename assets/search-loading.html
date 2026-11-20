@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><style>
+body { margin: 0; }
+time { color: #a5a7ae; font: 12px/1.2 ui-monospace, monospace; }
+.runa-search-loading { display: grid; justify-items: center; gap: 9px; text-align: center; }
+.target { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #dadbe0; font: 500 28px/1.4 system-ui, sans-serif; }
+.runa-loading-mark {display: grid; grid-template-columns: repeat(3, 4px); grid-template-rows: repeat(3, 4px); gap: 2px; transform: rotate(45deg);}
+.runa-loading-mark i {width: 4px; height: 4px; border-radius: 1px; background: #71dfb6; opacity: .2; animation: runa-pixel-pulse 1.15s ease-in-out infinite;}
+.runa-loading-mark i:nth-child(2), .runa-loading-mark i:nth-child(4) {animation-delay: .12s;}
+.runa-loading-mark i:nth-child(3), .runa-loading-mark i:nth-child(5), .runa-loading-mark i:nth-child(7) {animation-delay: .24s;}
+.runa-loading-mark i:nth-child(6), .runa-loading-mark i:nth-child(8) {animation-delay: .36s;}
+.runa-loading-mark i:nth-child(9) {animation-delay: .48s;}
+@keyframes runa-pixel-pulse {0%, 100% {opacity: .2; transform: scale(.78);} 50% {opacity: 1; transform: scale(1);}}
+
+@media (prefers-reduced-motion: reduce) { .runa-loading-mark i { animation: none; opacity: .8; } }
+</style>
+<div class="runa-search-loading">
+  <span class="runa-loading-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+  <span class="target" role="status" aria-label="Loading {{object_name}}">{{object_name}}</span>
+  <time aria-label="Elapsed time">0.0 s</time>
+</div>
+<script>
+const started = performance.now();
+const timer = document.querySelector("time");
+setInterval(() => { timer.textContent = ((performance.now() - started) / 1000).toFixed(1) + " s"; }, 100);
+</script></html>

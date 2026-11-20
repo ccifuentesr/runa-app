@@ -118,7 +118,6 @@ def luminosity_from_absolute_magnitude(magnitude, magnitude_error, relation_name
         return None
 
     coefficients = relation["coefficients"]
-    coefficient_errors = relation["coefficient_errors"]
     log_luminosity = sum(
         coefficient * float(magnitude) ** power
         for power, coefficient in enumerate(coefficients)
@@ -129,14 +128,13 @@ def luminosity_from_absolute_magnitude(magnitude, magnitude_error, relation_name
         for power, coefficient in enumerate(coefficients)
         if power > 0
     )
-    coefficient_error = sqrt(sum(
-        (coefficient_error * float(magnitude) ** power) ** 2
-        for power, coefficient_error in enumerate(coefficient_errors)
-    ))
+    # Cifuentes+20 report relative prediction precision for M dwarfs.
+    # Marginal coefficient errors cannot be propagated without their covariance.
+    relative_precision = {"M_G": 0.045, "M_J": 0.042}[relation_name]
     magnitude_term = 0.0
     if magnitude_error is not None:
         magnitude_term = derivative * float(magnitude_error)
-    log_error = sqrt(coefficient_error ** 2 + magnitude_term ** 2)
+    log_error = sqrt((relative_precision / LN10) ** 2 + magnitude_term ** 2)
 
     # Table 5 gives log10(L/L☉); convert the fit back to linear luminosity.
     luminosity = 10.0 ** log_luminosity
@@ -189,11 +187,15 @@ def mass_from_luminosity_eker(luminosity, luminosity_error=None):
             log_mass_error = sqrt(
                 (log_luminosity_error / slope) ** 2 + (scatter / slope) ** 2
             )
+            lower_mass = mass * 10.0 ** (-log_mass_error)
+            upper_mass = mass * 10.0 ** log_mass_error
             return {
                 "value": mass,
-                "error": mass * LN10 * log_mass_error,
+                "error_lower": mass - lower_mass,
+                "error_upper": upper_mass - mass,
                 "minimum": minimum,
                 "maximum": maximum,
+                "uncertainty_log10": log_mass_error,
             }
     return None
 

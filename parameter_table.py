@@ -3,7 +3,7 @@
 import csv
 from io import StringIO
 from pathlib import Path
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from html import escape
 import re
 from urllib.parse import quote
@@ -132,10 +132,13 @@ def panel_heading(title):
 
 
 def decimal_text(value):
-    """Expand scientific notation without changing the supplied precision."""
+    """Expand numeric values while preserving already formatted intervals."""
     if value is None:
         return "—"
-    return format(Decimal(str(value)), "f")
+    try:
+        return format(Decimal(str(value)), "f")
+    except (InvalidOperation, ValueError):
+        return str(value)
 
 
 def measurement_cell(row):

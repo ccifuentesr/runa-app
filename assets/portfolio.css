@@ -41,27 +41,6 @@ section[data-testid="stSidebar"] [data-testid="stElementContainer"]:has(.runa-si
   position: relative; z-index: 1;
 }
 .runa-sidebar-group {display:block; position:relative; margin:0; padding: .25rem 10px; color: #8b8d97; font: 500 .79rem/1.5 var(--runa-sans); text-transform: none; letter-spacing: 0;}
-.stApp .st-key-workspace_utility_coordinates button,
-.stApp .st-key-workspace_utility_spectral_type button {height:34px !important;min-height:34px !important;justify-content:flex-start !important;text-align:left !important;padding:0 !important;border:0 !important;border-radius:6px !important;background:transparent !important;box-shadow:none !important;color:#a6a7b0 !important;}
-.stApp .st-key-workspace_utility_coordinates,
-.stApp .st-key-workspace_utility_spectral_type {width:100% !important;margin:0 !important;}
-.stApp .st-key-workspace_utility_spectral_type {margin-top:-.55rem !important;}
-.stApp .st-key-workspace_utility_coordinates [data-testid="stButton"] button,
-.stApp .st-key-workspace_utility_spectral_type [data-testid="stButton"] button {width:100% !important;display:flex !important;justify-content:flex-start !important;text-align:left !important;padding-left:0 !important;}
-.stApp .st-key-workspace_utility_coordinates [data-testid="stButton"],
-.stApp .st-key-workspace_utility_spectral_type [data-testid="stButton"] {width:100% !important;}
-.stApp .st-key-workspace_utility_coordinates [data-testid="stButton"] button > div,
-.stApp .st-key-workspace_utility_spectral_type [data-testid="stButton"] button > div,
-.stApp .st-key-workspace_utility_coordinates [data-testid="stButton"] button p,
-.stApp .st-key-workspace_utility_spectral_type [data-testid="stButton"] button p {width:100% !important;margin:0 !important;text-align:left !important;}
-.stApp .st-key-workspace_utility_coordinates [data-testid="stButton"] button > div,
-.stApp .st-key-workspace_utility_spectral_type [data-testid="stButton"] button > div {display:block !important;flex:1 1 auto !important;}
-.stApp .st-key-workspace_utility_coordinates button p,
-.stApp .st-key-workspace_utility_spectral_type button p {width:100% !important;margin:0 !important;font:500 1rem/1.25 var(--runa-mono) !important;text-align:left !important;}
-.stApp .st-key-workspace_utility_coordinates button:hover,
-.stApp .st-key-workspace_utility_spectral_type button:hover {background:#1b1b1e !important;color:#e4e4e7 !important;}
-.stApp .st-key-workspace_utility_coordinates button[data-testid="stBaseButton-primary"],
-.stApp .st-key-workspace_utility_spectral_type button[data-testid="stBaseButton-primary"] {color:var(--runa-accent) !important;background:transparent !important;}
 .stApp .runa-utility-row-label {padding:.35rem 0;color:#b8b9c1;font-size:1rem;font-weight:500;white-space:nowrap;}
 .stApp .st-key-utilities_selected_card [data-testid="stElementContainer"] {margin-bottom:.18rem !important;}
 .stApp .st-key-utilities_selected_card [data-testid="stNumberInputRootElement"],
@@ -120,21 +99,20 @@ section[data-testid="stSidebar"] [data-testid="stButton"] button[data-testid="st
 .stApp button:focus-visible, .stApp a:focus-visible {outline: 2px solid var(--runa-accent) !important; outline-offset: 3px;}
 [data-testid="stForm"] {padding: 0 !important;}
 section[data-testid="stSidebar"] .st-key-runa_object_name {margin: 0 .35rem .8rem !important;}
-section[data-testid="stSidebar"] .st-key-runa_object_name label {margin-bottom: .3rem !important;}
-section[data-testid="stSidebar"] .st-key-runa_object_name label p {font: 600 .92rem/1.25 var(--runa-sans) !important; color: #f2f3f4 !important;}
 section[data-testid="stSidebar"] .st-key-runa_object_name [data-testid="stTextInputRootElement"] {min-height: 2.7rem !important; background: #292b30 !important; border: 0 !important; box-shadow: none !important; border-radius: 6px !important;}
-section[data-testid="stSidebar"] .st-key-runa_object_name [data-testid="stTextInputRootElement"]:focus-within {background: #303238 !important; box-shadow: inset 0 -2px 0 var(--runa-accent) !important;}
+section[data-testid="stSidebar"] .st-key-runa_object_name [data-testid="stTextInputRootElement"]:focus-within {background: #303238 !important; box-shadow: none !important;}
 section[data-testid="stSidebar"] .st-key-runa_object_name input {font: 400 .94rem/1.4 var(--runa-sans) !important; color: #f4f4f5 !important;}
 section[data-testid="stSidebar"] .st-key-runa_object_name input::placeholder {color: #b8bac1 !important; opacity: 1 !important;}
 .stApp .st-key-runa_home_search {margin-top: clamp(5rem, 13vh, 9rem) !important;}
 .stApp .st-key-runa_home_search label {margin-bottom: .45rem !important;}
 .stApp .st-key-runa_home_search label p {font: 500 1.08rem/1.3 var(--runa-sans) !important; color: #f4f4f5 !important;}
 .stApp .st-key-runa_home_search [data-testid="stTextInputRootElement"] {min-height: 3.25rem !important; background: #292b30 !important; border: 0 !important; border-radius: 6px !important; box-shadow: none !important;}
-.stApp .st-key-runa_home_search [data-testid="stTextInputRootElement"]:focus-within {background: #303238 !important; box-shadow: inset 0 -2px 0 var(--runa-accent) !important;}
+.stApp .st-key-runa_home_search [data-testid="stTextInputRootElement"]:focus-within {background: #303238 !important; box-shadow: none !important;}
 .stApp .st-key-runa_home_search input {font: 400 1.02rem/1.4 var(--runa-sans) !important; color: #f4f4f5 !important;}
 .stApp .st-key-runa_home_search input::placeholder {color: #aeb1b9 !important; opacity: 1 !important;}
 .stApp .st-key-runa_home_search [data-testid="stCaptionContainer"] p {color: #858892 !important; font-size: .8rem !important;}
-.stApp .runa-home-scope {max-width: 30rem; margin: 1.05rem 0 0; color: #a1a1aa; font: 400 .88rem/1.55 var(--runa-sans);}
+.stApp .st-key-runa_home_search [data-testid="stTextInputRootElement"] {min-height: 3.55rem !important; border-radius: 8px !important; background: #202226 !important;}
+.stApp .st-key-runa_home_search input {font-size: 1.08rem !important;}
 .stApp [data-testid="stTextInputRootElement"], .stApp [data-baseweb="select"] > div {background: var(--runa-surface); border-radius: 5px;}
 /* Quiet surfaces throughout the scientific tools, including module-local styles. */
 .stApp [data-testid="stVerticalBlockBorderWrapper"],
@@ -194,6 +172,11 @@ section[data-testid="stSidebar"] .st-key-runa_object_name input::placeholder {co
 .stApp .runa-parameter-estimated .runa-parameter-kind {color: var(--runa-muted) !important;}
 .stApp .runa-criteria-caution {color: #f4cf75 !important; font-weight: 600 !important; margin: .35rem 0 .8rem !important;}
 .runa-field-hypothesis {color: #f4cf75; font-size: 1.7rem; font-weight: 600; line-height: 1.2; padding: .15rem 0 .8rem;}
+.runa-bibliography-summary {display:flex;align-items:baseline;gap:.55rem;margin:.05rem 0 .8rem;color:#f1f1f3;}
+.runa-bibliography-total {color:#64dfb4;font-size:2rem;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums;}
+.runa-bibliography-label {color:#f1f1f3;font-size:.95rem;font-weight:450;}
+.runa-bibliography-years {color:#d4d4d8;font-size:1.08rem;font-weight:650;font-variant-numeric:tabular-nums;}
+.runa-bibliography-no-results {margin:.7rem 0;color:#93b9e6;font-size:.9rem;}
 .runa-probability-maximum {color: #f4cf75 !important; font-weight: 650 !important;}
 .runa-probability-list {margin: .25rem 0 .5rem;}
 .runa-probability-row {display: grid; grid-template-columns: minmax(0,1fr) auto; gap: .65rem; align-items: baseline; padding: .4rem .7rem; color: var(--runa-muted); font-size: .84rem;}
@@ -225,7 +208,7 @@ section[data-testid="stSidebar"] .st-key-runa_object_name input::placeholder {co
 .runa-literature-measurements .runa-data-source a {white-space: nowrap !important; overflow-wrap: normal !important; word-break: normal !important; font-size: .8rem !important;}
 .stApp .runa-identification-data {overflow: visible !important;}
 .runa-distance-notice {position: relative; display: inline-flex; align-items: center; justify-content: center; width: 1rem; height: 1rem; margin-left: .28rem; border: 1px solid #8a7742; border-radius: 50%; color: #d2b767; font: 600 .68rem/1 var(--runa-sans); cursor: help; vertical-align: .04em;}
-.runa-distance-notice-text {display: none; position: absolute; z-index: 20; left: 50%; bottom: calc(100% + .5rem); transform: translateX(-50%); width: max-content; max-width: min(19rem, 78vw); padding: .65rem .8rem; border-radius: 5px; background: #1b1b1e; color: #d4d4d8; font: 400 .8rem/1.5 var(--runa-sans); box-shadow: 0 5px 18px #0008; white-space: normal;}
+.runa-distance-notice-text {display: none; position: absolute; z-index: 20; left: 50%; bottom: calc(100% + .5rem); transform: translateX(-50%); width: max-content; max-width: min(19rem, calc(100vw - 2rem)); padding: .65rem .8rem; border-radius: 5px; background: #1b1b1e; color: #d4d4d8; font: 400 .8rem/1.5 var(--runa-sans); box-shadow: 0 5px 18px #0008; white-space: normal;}
 .runa-distance-notice-text a {color: var(--runa-accent) !important; text-decoration: underline;}
 .runa-distance-notice:hover .runa-distance-notice-text,
 .runa-distance-notice:focus .runa-distance-notice-text {display: block;}
@@ -244,4 +227,130 @@ section[data-testid="stSidebar"] .st-key-runa_object_name input::placeholder {co
 @media (max-width: 850px) {
   .stMainBlockContainer {padding: 4.5rem 1.25rem 3rem !important;}
   .runa-brand {margin-bottom: 1.8rem !important;}
+}
+.stApp .st-key-photometry_published_catalogues a[href*="svo2.cab.inta-csic.es/theory/vosa"],
+.stApp .st-key-photometry_published_catalogues a[href*="svo2.cab.inta-csic.es/theory/vosa"] * {font-family: var(--runa-mono), monospace !important;}
+.runa-archive-heading {position:relative;display:flex;align-items:center;justify-content:space-between;gap:.65rem;margin:.05rem 0 .65rem;}
+.runa-archive-heading .runa-panel-heading {margin:0;}
+.runa-archive-heading .runa-distance-notice {position:static;flex:0 0 1rem;margin:0 .1rem .55rem 0;}
+
+.runa-archive-heading .runa-distance-notice-text {
+  left: auto;
+  right: 0;
+  top: calc(100% + .35rem);
+  bottom: auto;
+  transform: none;
+  width: 25rem;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
+.stApp .runa-neighbour-table {
+  max-height: 400px;
+  overflow: auto;
+}
+.stApp .runa-neighbour-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--runa-surface);
+}
+
+.stApp .runa-empty-state {
+  position:relative;z-index:3;display:flex;justify-content:flex-end;
+  height:0;line-height:0;overflow:visible;
+}
+.stApp .runa-empty-state .runa-empty-badge {transform:translateY(-2.05rem);}
+.stApp .runa-empty-badge {
+  display: inline-block;
+  padding: .18rem .5rem;
+  border-radius: 4px;
+  background: rgba(96, 165, 250, .10);
+  color: #93b9e6;
+  font: 400 .74rem/1.4 var(--runa-sans);
+  cursor: help;
+}
+.stApp .st-key-model_limits_selected_card a {color: #78aee8 !important;}
+.stApp .st-key-model_limits_selected_card a:hover {color: #a7ccf5 !important;}
+.stApp .st-key-workspace_model_scopes button[kind="secondary"] {
+  background: rgba(255,255,255,.045) !important;
+  color: #d4d4d8 !important;
+  border: 0 !important;
+}
+
+.stApp .runa-empty-badge {position:relative;cursor:help;}
+.stApp .runa-empty-tooltip {
+  display:none;position:absolute;z-index:30;left:0;top:calc(100% + .35rem);
+  width:max-content;max-width:min(22rem,75vw);padding:.55rem .7rem;
+  border-radius:5px;background:#242429;color:#e4e4e7;
+  font:400 .76rem/1.45 var(--runa-sans);white-space:normal;
+  box-shadow:0 5px 18px #0009;
+}
+.stApp .runa-empty-badge:hover .runa-empty-tooltip,
+.stApp .runa-empty-badge:focus .runa-empty-tooltip {display:block;}
+.stApp .runa-planet-reference {margin-left:.18rem;color:#78aee8 !important;font-size:.72rem;text-decoration:none;}
+.stApp .runa-planet-population-notes {margin:.25rem 0 .1rem;color:#777780;font-size:.72rem;line-height:1.45;}
+.stApp .runa-planet-population-notes > div + div {margin-top:.1rem;}
+/* Planet measurements follow the readable Identifiers typography. */
+.stApp .runa-planet-table {overflow-x:auto;}
+.stApp .runa-planet-row {
+  min-width:64rem;
+  grid-template-columns:minmax(10rem,1.7fr) minmax(6rem,.8fr) repeat(5,minmax(8rem,1fr));
+  gap:.75rem;
+  padding:.76rem 1rem;
+  font-family:var(--runa-sans);
+  font-size:1rem;
+  font-weight:500;
+  line-height:1.5;
+  font-variant-numeric:tabular-nums;
+  overflow-wrap:normal;
+}
+.stApp .runa-planet-row > span:nth-child(n+3) {white-space:nowrap;}
+.stApp .runa-planet-row > span small {
+  white-space:nowrap;
+  font-size:1rem;
+  font-weight:430;
+  color:#92929d;
+  line-height:1.5;
+  margin-top:.15rem;
+}
+.stApp .runa-planet-row > span:first-child small {white-space:normal;font-size:.8rem;}
+.stApp .runa-planet-head {font-size:.82rem;}
+.stApp .runa-planet-head > span small {font-size:.9rem;}
+
+
+.runa-orbit-note-row {display:flex;justify-content:flex-end;margin-top:-.4rem;}
+.runa-orbit-note-row .runa-distance-notice {margin:0 .2rem .35rem 0;}
+.runa-orbit-note-row .runa-distance-notice-text {left:auto;right:0;transform:none;}
+.stApp .st-key-workspace_model_multiplicity button,
+.stApp .st-key-workspace_model_photometry button,
+.stApp .st-key-workspace_model_parameters button,
+.stApp .st-key-workspace_model_kinematics button,
+.stApp .st-key-workspace_utility_coordinates button,
+.stApp .st-key-workspace_utility_spectral_type button {background:transparent !important;color:#a1a1aa !important;border:0 !important;}
+.stApp .st-key-workspace_model_multiplicity button:hover,
+.stApp .st-key-workspace_model_photometry button:hover,
+.stApp .st-key-workspace_model_parameters button:hover,
+.stApp .st-key-workspace_model_kinematics button:hover,
+.stApp .st-key-workspace_utility_coordinates button:hover,
+.stApp .st-key-workspace_utility_spectral_type button:hover {background:rgba(255,255,255,.045) !important;color:#e4e4e7 !important;}
+
+.stApp .st-key-workspace_model_multiplicity button[kind="primary"],
+.stApp .st-key-workspace_model_photometry button[kind="primary"],
+.stApp .st-key-workspace_model_parameters button[kind="primary"],
+.stApp .st-key-workspace_model_kinematics button[kind="primary"],
+.stApp .st-key-workspace_utility_coordinates button[kind="primary"],
+.stApp .st-key-workspace_utility_spectral_type button[kind="primary"] {
+  background:rgba(255,255,255,.07) !important;color:#e4e4e7 !important;border:0 !important;
+}
+.stApp .runa-planet-row > span:nth-child(n+3) small {
+  display:inline !important;
+  white-space:nowrap !important;
+  margin-left:.18rem;
+}
+
+.stApp .st-key-bibliography_table [data-testid="stDataFrame"] {
+  --gdg-font-size: 12px;
+  --gdg-header-font-size: 12px;
+  font-size: 12px !important;
 }

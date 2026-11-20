@@ -8,7 +8,7 @@ import csv
 import re
 from functools import lru_cache
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
 
@@ -67,8 +67,12 @@ def _tap_query(names, gaia_id=None):
         conditions.append(f"gaia_dr3_id = 'Gaia DR3 {gaia_id}'")
     return (
         "SELECT TOP 100 hostname, pl_name, discoverymethod, disc_year, disc_refname, "
-        "pl_orbper, pl_orbsmax, pl_orbeccen, pl_rade, pl_masse, "
-        "pl_bmasse, pl_bmassprov, pl_bmasselim, sy_pnum, sy_dist FROM pscomppars WHERE "
+        "pl_orbper, pl_orbpererr1, pl_orbpererr2, pl_orbper_reflink, "
+        "pl_orbsmax, pl_orbsmaxerr1, pl_orbsmaxerr2, pl_orbsmax_reflink, "
+        "pl_orbeccen, pl_orbeccenerr1, pl_orbeccenerr2, pl_orbeccen_reflink, "
+        "pl_rade, pl_radeerr1, pl_radeerr2, pl_rade_reflink, pl_masse, "
+        "pl_bmasse, pl_bmasseerr1, pl_bmasseerr2, pl_bmasse_reflink, "
+        "pl_bmassprov, pl_bmasselim, st_mass, st_rad, st_lum, sy_pnum, sy_dist FROM pscomppars WHERE "
         + " OR ".join(conditions)
         + " ORDER BY pl_name"
     )
@@ -244,25 +248,32 @@ def merge_planets(nasa_planets, oec_planets):
 
 
 def discovery_references(planets):
-    """Return distinct confirmed-planet discovery citations by publication year."""
-    references = set()
+    """Return distinct discovery citations and links, sorted by publication year."""
+    references = {}
     for planet in planets:
         if planet.get("status") != "Confirmed":
             continue
-        raw = planet.get("disc_refname")
+        raw = str(planet.get("disc_refname") or "")
         if not raw:
             continue
-        text = " ".join(unescape(re.sub(r"<[^>]*>", "", str(raw))).split())
+        link_match = re.search(r"href=[\"']([^\"']+)[\"']", raw, re.I)
+        href = unescape(link_match.group(1)) if link_match else ""
+        text = " ".join(unescape(re.sub(r"<[^>]*>", "", raw)).split())
         match = re.search(r"^(.+?)\s+(et al\.?)\s*,?\s*\(?((?:19|20)\d{2})\)?", text, re.I)
         if match:
             author, _, year = match.groups()
-            references.add((int(year), f"{author.strip(' ,')} et al. ({year})"))
-            continue
-        match = re.search(r"^(.+?)\s*,?\s*\(?((?:19|20)\d{2})\)?", text)
-        if match:
+            citation = f"{author.strip(' ,')} et al. ({year})"
+        else:
+            match = re.search(r"^(.+?)\s*,?\s*\(?((?:19|20)\d{2})\)?", text)
+            if not match:
+                continue
             author, year = match.groups()
-            references.add((int(year), f"{author.strip(' ,')} ({year})"))
-    return [reference for _, reference in sorted(references)]
+            citation = f"{author.strip(' ,')} ({year})"
+        if not href or not href.startswith(("https://", "http://")):
+            href = "https://ui.adsabs.harvard.edu/search/q=" + quote(f'"{citation}"', safe="")
+        references[(int(year), citation)] = href
+    return [(citation, references[(year, citation)])
+            for year, citation in sorted(references)]
 
 
 def orbital_mass(planet):
