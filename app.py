@@ -532,10 +532,10 @@ def planet_table(planets, stellar_luminosity=None):
     rows = [
         '<section class="runa-planet-table">'
         '<div class="runa-planet-row runa-planet-head">'
-        '<span>Planet</span><span>Status</span>'
+        '<span>Planet</span>'
         '<span class="runa-orbital-symbol">P<sub>orb</sub><small>days</small></span>'
-        '<span class="runa-orbital-symbol">R<small>R⊕</small></span>'
-        '<span>M<small>M⊕</small></span>'
+        '<span class="runa-orbital-symbol">R<small>R<sub>⊕</sub></small></span>'
+        '<span>M<small>M<sub>⊕</sub></small></span>'
         '<span class="runa-orbital-symbol">a<small>AU</small></span>'
         '<span class="runa-orbital-symbol">e</span></div>'
     ]
@@ -547,50 +547,34 @@ def planet_table(planets, stellar_luminosity=None):
         except (TypeError, ValueError):
             return "—"
 
-    def parameter_cell(planet, value_key, plus_key, minus_key, reference_key, decimals):
-        value = display_number(planet.get(value_key), decimals)
-        if value == "—":
-            return value
-        uncertainty = ""
-        plus_value = planet.get(plus_key)
-        minus_value = planet.get(minus_key)
-        if plus_value is not None or minus_value is not None:
-            plus = display_number(abs(float(plus_value)), decimals) if plus_value is not None else "—"
-            minus = display_number(abs(float(minus_value)), decimals) if minus_value is not None else "—"
-            if plus_value is not None and minus_value is not None:
-                uncertainty_text = f"+{plus} / −{minus}"
-            elif plus_value is not None:
-                uncertainty_text = f"+{plus}"
-            else:
-                uncertainty_text = f"−{minus}"
-            uncertainty = f'<small class="runa-planet-uncertainty">({escape(uncertainty_text)})</small>'
-        return f'{escape(value)}{uncertainty}'
+    def parameter_cell(planet, value_key, decimals):
+        return escape(display_number(planet.get(value_key), decimals))
 
     for planet in planets:
         status = str(planet.get("status") or "Unknown")
         status_class = "confirmed" if status == "Confirmed" else "candidate"
-        mass_value, mass_kind = orbital_mass(planet)
-        mass_note = "<small>M sin i</small>" if mass_kind == "minimum" else ""
+        _, mass_kind = orbital_mass(planet)
+        mass_prefix = "&gt; " if mass_kind == "minimum" else ""
         discovery_year = planet.get("disc_year")
         if discovery_year is not None:
             try:
                 discovery_year = str(int(float(discovery_year)))
             except (TypeError, ValueError, OverflowError):
                 discovery_year = str(discovery_year)
-        details_parts = [str(value) for value in (
+        details = " · ".join(str(value) for value in (
             planet.get("discoverymethod"), discovery_year,
-        ) if value]
-        details = " · ".join(details_parts)
+        ) if value)
         rows.append(
             '<div class="runa-planet-row">'
-            f'<span>{escape(str(planet.get("pl_name") or "—"))}'
+            f'<span><i class="runa-planet-dot runa-planet-dot-{status_class}" '
+            f'title="{escape(status)}" aria-label="{escape(status)}"></i>'
+            f'{escape(str(planet.get("pl_name") or "—"))}'
             f'<small>{escape(details)}</small></span>'
-            f'<span class="runa-planet-status-{status_class}">{escape(status)}</span>'
-            f'<span>{parameter_cell(planet, "pl_orbper", "pl_orbpererr1", "pl_orbpererr2", "pl_orbper_reflink", 2)}</span>'
-            f'<span>{parameter_cell(planet, "pl_rade", "pl_radeerr1", "pl_radeerr2", "pl_rade_reflink", 2)}</span>'
-            f'<span>{parameter_cell(planet, "pl_bmasse", "pl_bmasseerr1", "pl_bmasseerr2", "pl_bmasse_reflink", 2)}{mass_note}</span>'
-            f'<span>{parameter_cell(planet, "pl_orbsmax", "pl_orbsmaxerr1", "pl_orbsmaxerr2", "pl_orbsmax_reflink", 3)}</span>'
-            f'<span>{parameter_cell(planet, "pl_orbeccen", "pl_orbeccenerr1", "pl_orbeccenerr2", "pl_orbeccen_reflink", 2)}</span></div>'
+            f'<span>{parameter_cell(planet, "pl_orbper", 2)}</span>'
+            f'<span>{parameter_cell(planet, "pl_rade", 2)}</span>'
+            f'<span>{mass_prefix}{parameter_cell(planet, "pl_bmasse", 2)}</span>'
+            f'<span>{parameter_cell(planet, "pl_orbsmax", 3)}</span>'
+            f'<span>{parameter_cell(planet, "pl_orbeccen", 2)}</span></div>'
         )
     rows.append("</section>")
     st.markdown("".join(rows), unsafe_allow_html=True)
@@ -2092,16 +2076,16 @@ elif tool == "Planets":
     inputs = st
     results = st
     input_card = None
-    result_card = st.container(border=True, key="planets_combined_card")
     planet_left, planet_right = st.columns(2, gap="small")
-    planet_population_card = planet_left.container(
-        border=True, key="planets_population_card"
+    result_card = planet_left.container(border=True, key="planets_combined_card")
+    planet_orbit_card = planet_left.container(
+        border=True, key="planets_orbit_card"
     )
     planet_sensitivity_card = planet_left.container(
         border=True, key="planets_sensitivity_card"
     )
-    planet_orbit_card = planet_right.container(
-        border=True, key="planets_orbit_card"
+    planet_population_card = planet_right.container(
+        border=True, key="planets_population_card"
     )
     tess_card = planet_right.container(
         border=True, key="planets_tess_card"
@@ -2270,10 +2254,10 @@ elif tool == "Bibliography":
                     column_config={
                         "Year": st.column_config.TextColumn("Year", width=75),
                         "First author": st.column_config.TextColumn(
-                            "First author", width=190, wrap_text=True,
+                            "First author", width=190,
                         ),
                         "Title": st.column_config.TextColumn(
-                            "Title", width="large", wrap_text=True,
+                            "Title", width="large",
                         ),
                         "Paper": st.column_config.LinkColumn(
                             "Paper", display_text="ADS", width=70,
